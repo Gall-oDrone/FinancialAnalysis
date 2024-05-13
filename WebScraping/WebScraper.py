@@ -1,8 +1,12 @@
 import time
 import json
-import time
 import pandas as pd
 import uuid
+import sys
+sys.path.append('../Storage')
+import pgConn
+import PostgresSQL_table_queries
+from datetime import datetime, timedelta
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
@@ -29,7 +33,13 @@ class Scrapper:
         self.topics = topics
         self.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=self.options)
         self.df_store = DataFrameStore()
+        self.db_conn = None
 
+    def initDB(self, db_type, tablename, dbname, user, table_query):
+        if db_type == 'postgres':
+            self.db_conn = pgConn.PgConn(tablename, dbname, user)
+            self.db_conn.init_db(table_query)
+        
     def set_driver_options(self):
         # Set desired options for the WebDriver
         self.options = webdriver.ChromeOptions()
@@ -139,10 +149,10 @@ class Scrapper:
         print("-------------------------------------------------------------------------")
         print("storing to Database")
         print("-------------------------------------------------------------------------")
-        pg_conn.reopen_connection()    
+        self.db_conn.reopen_connection()    
         header = self.df_store.data_frame_header
         for index, row in self.df_store.data_frame.iterrows():
-            pg_conn.save_to_postgres(row, header)
+            self.db_conn.save_to_postgres(row, header)
                         
     def quit_driver(self):
         # Close the WebDriver
@@ -216,7 +226,7 @@ class Scrapper:
         except Exception as e:
             print("error during parsing data:", e, "row_data: ", row_data)        
     
-        def printInnerHTML(self, xpath):
+    def printInnerHTML(self, xpath):
         # Get the inner HTML of the specific element
         specific_element = driver.find_element(By.XPATH, xpath)
 
@@ -226,7 +236,7 @@ class Scrapper:
         print(inner_html)
 
 
-    def printXPathAndClass(el):
+    def printXPathAndClass(self, el):
         # Get the XPath of the element
         element_xpath = el.get_attribute("xpath")
         print("Element XPath:", element_xpath)
@@ -235,11 +245,96 @@ class Scrapper:
         element_class = el.get_attribute("class")
         print("Element Class:", element_class)
 
+
+'''
+============================================================================================================
+ DataFrame object class for storing raw text data from Yahoo Finance
+============================================================================================================
+'''
+class DataFrameStore:
+    def __init__(self, header=["id", "source", "category", "headline", "href", "summary", "content", "datetime"]):
+        self._data_frame = None
+        self.header = header
+        self.row_index = None
+
+    @property
+    def data_frame(self):
+        return self._data_frame
+
+    @data_frame.setter
+    def data_frame(self, df):
+        if df is not None and not isinstance(df, pd.DataFrame):
+            raise ValueError("DataFrame must be a pandas DataFrame object")
+        self._data_frame = df
+
+    @property
+    def data_frame_header(self):
+        return self.header
+    
+    def create_data_frame(self):
+        self.data_frame = pd.DataFrame(columns=self.header)
+
+    def update_data_frame(self, data):
+        # Check if DataFrame exists
+        if self.data_frame is None:
+            self.create_data_frame()
+            print("DataFrame is not initialized. Creating a DataFrame.")
+
+        # Check if the number of columns matches the length of the data
+        if len(self.header) != len(data):
+            raise ValueError("Number of columns does not match the length of the data.")
+
+        # Map dictionary keys to DataFrame headers and assign values
+        mapped_data = {}
+        for header in self.header:
+            mapped_data[header] = data.get(header, None)
+
+        # Convert mapped data to DataFrame and concatenate with existing DataFrame
+        new_data = pd.DataFrame(mapped_data, index=[0])
+        new_data = pd.DataFrame(new_data)
+
+        # Concatenate new data with existing DataFrame
+        self.data_frame = pd.concat([self.data_frame, new_data], ignore_index=True)
         
 '''
+============================================================================================================
  NewsScrapper class for srapping raw text data from Yahoo Finance
+============================================================================================================
 '''
 class NewsScrapper(Scrapper):
+    
+    def calculate_datetime_from_ago_string(self, ago_string):
+        # Split the string by spaces
+        parts = ago_string.split()
+        
+        # Extract the value and unit from the string
+        value = int(parts[0])
+        unit = parts[1].lower()  # Convert unit to lowercase for easier comparison
+        
+        # Determine the timedelta to subtract based on the unit
+        if unit.endswith('s'):  # Check if the unit ends with 's' (plural)
+            unit = unit[:-1]  # Remove the 's' to get the singular form
+            
+        # Map units to corresponding timedelta function
+        unit_to_timedelta = {
+            'second': timedelta(seconds=1),
+            'minute': timedelta(minutes=1),
+            'hour': timedelta(hours=1),
+            'day': timedelta(days=1),
+            'yesterday': timedelta(days=1),
+            'days': timedelta(days=1),
+        }
+        
+        # Calculate the timedelta based on the unit
+        if unit in unit_to_timedelta:
+            timedelta_to_subtract = unit_to_timedelta[unit] * value
+            # Calculate the datetime and timestamp
+            current_datetime = datetime.now()
+            calculated_datetime = current_datetime - timedelta_to_subtract
+            calculated_timestamp = int(calculated_datetime.timestamp())
+            return calculated_datetime, calculated_timestamp
+        else:
+            raise ValueError("Invalid time unit: {}".format(unit))
     
     def getMainHeadline(self, html_element):
         return self.extractToText(html_element)
@@ -262,7 +357,7 @@ class NewsScrapper(Scrapper):
                 news_source = self.getText(el)
             elif i == 1:
                 news_timestamp = self.getText(el)
-                calculated_datetime, calculated_timestamp = calculate_datetime_from_ago_string(news_timestamp)
+                calculated_datetime, calculated_timestamp = self.calculate_datetime_from_ago_string(news_timestamp)
         print('news_source: ', news_source, ', calculated_datetime: ', calculated_datetime, ', calculated_timestamp', calculated_timestamp)
         return news_source
   
@@ -474,6 +569,7 @@ class NewsScrapper(Scrapper):
     def selenium_scrapper(self, html_element):
         max_time_to_wait_html_element = 1.5
         skipScrollingDown = True
+        self.initDB('postgres', "financial_news", "cryptostocks", "postgres", PostgresSQL_table_queries.HISTORICAL_FINANCIAL_NEWS_TABLE_QUERY)
         try:
             WebDriverWait(self.driver,max_time_to_wait_html_element).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             try:
@@ -519,7 +615,7 @@ class NewsScrapper(Scrapper):
             if(DEBUG):
                 delete_table("historical", conn)
             '''
-            pg_conn.close_connection()
+            self.db_conn.close_connection()
         
     def setTestDataForFullNewsContent(self):
         data = {
@@ -538,6 +634,7 @@ class NewsScrapper(Scrapper):
     def test_fullNewContent(self):
         # Initialize an empty list to store extracted data
         storeToDB = False
+        print("Corso")
         try: 
             self.setTestDataForFullNewsContent()
             self.retrieveFullNewsArticle()
@@ -569,8 +666,8 @@ class NewsScrapper(Scrapper):
             print(toe.args)
         finally:
             if(DELETE_TABLE):
-                pg_conn.delete_table()
-            pg_conn.close_connection()
+                self.db_conn.delete_table()
+            self.db_conn.close_connection()
  
 '''
  StocksScrapper class for srapping raw text data from Yahoo Finance
@@ -709,3 +806,88 @@ class StocksScrapper(Scrapper):
 
         wait.until(EC.presence_of_element_located((By.XPATH, STOCKS_HTML_TABLE)))
         print("Task finished")
+        
+    def startScrapping(self):
+        REFERENCE = 'https://finance.yahoo.com'
+        Header = ["reference", "book", "date", "open", "high", "low", "close", "adj_close", "volume"]
+        n = len(Header)
+        Debug = False
+        time_period = '1d'
+        frequency = 'daily'
+        show_row_data = True
+        frombook = ''
+        self.initDB('postgres', "historical", "cryptostocks", "postgres", PostgresSQL_table_queries.HISTORICAL_CRYPTO_STOCKS_TABLE_QUERY)
+        if (len(frombook) > 0):
+            usd_books = from_book(frombook)
+
+        try:
+            WebDriverWait(driver,5).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            try:
+                for book in usd_books:
+                    print(f'Book: {book}')
+                    target_url = f"https://finance.yahoo.com/quote/{book.upper()}/history?p={book.upper()}"
+                    print(target_url)
+                    driver.get(target_url)
+
+                    if(nomatchresult(driver, book)):
+                        print("skipping to next ticket")
+                        # save_unavailable_book(book)
+                        print("====================================================================")
+                        continue
+
+                    select_historical(driver, time_period, frequency)
+                    time.sleep(1)
+
+                    is_at_bottom(driver)
+                    table = driver.find_element(By.XPATH, STOCKS_HTML_TABLE_BODY)
+                    # Get all rows of the table
+                    rows = table.find_elements(By.TAG_NAME, "tr")
+
+                    # Create an empty list to store the table data
+                    #table_data = []
+                    #df_book = pd.DataFrame(table_data, columns=Header)
+                    # Iterate through each row
+                    print("Scraping raw stock prices data task started")
+                    for row in rows:
+                        # Get all columns (cells) of the row
+                        columns = row.find_elements(By.TAG_NAME, "td")
+                        row_data = []
+                        row_data = [column.text for column in columns if column.text != '-']
+                        if(len(row_data) != 7):
+                            print("skipping to next row")
+                            continue
+                        row_data = parse_row_data(row_data)
+                        row_data.insert(0, book)
+                        row_data.insert(0, REFERENCE)
+                        try:
+                            if (show_row_data):
+                                print("test: ", row_data)
+                            self.db_conn.save_to_postgres(row_data, Header)
+                        except Exception as e:
+                            print(f"error while saving to postgres: {e}")
+                        #df_book = pd.concat([df_book, pd.DataFrame([row_data], columns=Header)], ignore_index=True)
+                    #df = pd.concat([df, df_book], ignore_index=True)
+                    #num_rows, num_columns = df.shape
+                    #last_five_rows = df.tail(3)
+                    print("Scraping raw stock prices data task finished")
+                    print("====================================================================")
+                print("**All book data was scraped**")
+            except NoSuchElementException as nse:
+                print(nse)
+                print("-----")
+                print(str(nse))
+                print("-----")
+                print(nse.args)
+                print("=====")
+        except TimeoutException as toe:
+            print(toe)
+            print("-----")
+            print(str(toe))
+            print("-----")
+            print(toe.args)
+        finally:
+            if(Debug):
+                delete_table("historical", conn)
+            self.db_conn.close_connection()
+        if (not KEEP_DRIVER_OPEN):
+            driver.close()
