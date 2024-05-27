@@ -1,11 +1,15 @@
+import sys, os, csv
+sys.path.append('../Storage')
+sys.path.append('../BitsoApi')
+
 import time
 import json
 import pandas as pd
 import uuid
-import sys
-sys.path.append('../Storage')
 import pgConn
 import PostgresSQL_table_queries
+import ApiModel
+
 from datetime import datetime, timedelta
 
 from selenium import webdriver
@@ -26,9 +30,10 @@ from webdriver_manager.firefox import GeckoDriverManager
 
 
 class Scrapper:
-    def __init__(self, debug=False, topics=[]):
+    def __init__(self, debug=False, keepBrowserOpen=False, topics=[]):
         # Initialize the Selenium WebDriver with default options
         self.debug = debug
+        self.keepBrowserOpen = keepBrowserOpen
         self.set_driver_options()
         self.topics = topics
         self.driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=self.options)
@@ -228,7 +233,7 @@ class Scrapper:
     
     def printInnerHTML(self, xpath):
         # Get the inner HTML of the specific element
-        specific_element = driver.find_element(By.XPATH, xpath)
+        specific_element = self.driver.find_element(By.XPATH, xpath)
 
         inner_html = specific_element.get_attribute('innerHTML')
 
@@ -680,6 +685,40 @@ class StocksScrapper(Scrapper):
     STOCKS_HTML_TABLE_BODY = "/html/body/div[1]/main/section/section/section/article/div[1]/div[3]/table/tbody"
     NO_RESULTS_FOUND_HTML_SPAN_EL = "/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[1]/div/div/section/section/div/div/span/span"
     
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.print_book = False
+        self.debugDB = False
+
+    def get_available_books(self):
+        api = ApiModel.Api(timeout=5)
+        avb_books = api.available_books()
+        if self.print_book == True:
+            print(f"Total Available Books: {len(avb_books.books)}")
+            print(f"Available Books: {avb_books.books}")
+            return avb_books
+        
+    def filter_books(self, avb_books):
+        usd_books = [book for book in avb_books.books if 'mxn' not in book]
+        usd_books = [book for book in usd_books if 'brl' not in book]
+        usd_books = [book for book in usd_books if 'cop' not in book]
+        usd_books = [book for book in usd_books if 'ars' not in book]
+        print(f"Total USD Available Books: {len(usd_books)}")
+        print(f"USD Available Books: {usd_books}")
+
+    def from_book(self, book):
+        cum = []
+        start = False
+        avb_books = self.get_available_books()
+        usd_books = self.filter_books(avb_books)
+        for usd_book in usd_books:
+            if usd_book == book:
+                start = True
+            if start:
+                cum.append(usd_book)
+        print(f"From chosen USD Available Book: {cum}")
+        return cum
+
     def save_unavailable_book(self, book_name):
         try:
             current_directory = os.getcwd()
@@ -698,21 +737,21 @@ class StocksScrapper(Scrapper):
     def get_dynamic_url(self, ticker, period1=1410825600, period2=1690675200, interval="1d",adjclose="true"):
         return f'https://finance.yahoo.com/quote/{ticker.upper()}/history?period1={period1}&period2={period2}&interval={interval}&filter=history&frequency={interval}&includeAdjustedClose={adjclose}'
 
-    def scroll_to_bottom(self, driver):
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+    def scroll_to_bottom(self):
+        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
 
 
-    def check_tab_header(self, driver):
+    def check_tab_header(self):
         try:
-            element = driver.find_element(By.XPATH, '//*[@id="quote-nav"]')
+            element = self.driver.find_element(By.XPATH, '//*[@id="quote-nav"]')
             #tab = driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[2]/div/div/div[7]/section/div/ul/li[3]/a')
             return True
         except Exception as e:
             print(f"financial header or historical data tab does not exist: {e}")
             return False
 
-    def check_html_el_exist(self, driver, xpath):
-        wait = WebDriverWait(driver, 3.0)
+    def check_html_el_exist(self, xpath):
+        wait = WebDriverWait(self.driver, 3.0)
         try:
             wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
             return True
@@ -720,51 +759,50 @@ class StocksScrapper(Scrapper):
             print("Element does not exist")
             return False
 
-    def nomatchresult(self, driver, book):
+    def nomatchresult(self, book):
         try:
-            if (driver.current_url == f"https://finance.yahoo.com/lookup?s={book.upper()}" or check_html_el_exist(driver, NO_RESULTS_FOUND_HTML_SPAN_EL)):
+            if (self.driver.current_url == f"https://finance.yahoo.com/lookup?s={book.upper()}" or check_html_el_exist(driver, NO_RESULTS_FOUND_HTML_SPAN_EL)):
                 print(f"no data was found for {book.upper()}")
                 return True
         except Exception as nse:
                 print(f"{book.upper()} book was found!")
                 return False
 
-    def lookup_ticker(self, driver, ticker):
-        RejectAll= driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[3]/div[2]/div/div/div/div/div/div[1]/div/div/div/form/input')
-        action = ActionChains(driver)
+    def lookup_ticker(self, ticker):
+        RejectAll= self.driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[3]/div[2]/div/div/div/div/div/div[1]/div/div/div/form/input')
+        action = ActionChains(self.driver)
         action.click(on_element = RejectAll)
         action.perform()
         time.sleep(5)
-        SearchBar = driver.find_element(By.ID, "yfin-usr-qry")
+        SearchBar = self.driver.find_element(By.ID, "yfin-usr-qry")
         SearchBar.send_keys(ticker.upper())
         SearchBar.send_keys(Keys.ENTER)
 
-    def select_historical_li(self, driver):
-        li_historical_a = driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[2]/div/div/div[7]/div/div/section/div/ul/li[4]/a')
-        action = ActionChains(driver)
+    def select_historical_li(self):
+        li_historical_a = self.driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[2]/div/div/div[7]/div/div/section/div/ul/li[4]/a')
+        action = ActionChains(self.driver)
         action.click(on_element = li_historical_a)
         action.perform()
-        time.sleep(3)
 
-    def disable_ad(self, driver): 
-        wait = WebDriverWait(driver, 3.0)
+    def disable_ad(self): 
+        wait = WebDriverWait(self.driver, 3.0)
         try:
             ad_element = '//*[@id="Col1-0-Ad-Proxy"]'
             wait.until(EC.presence_of_element_located((By.XPATH, ad_element)))
-            driver.execute_script("arguments[0].style.display = 'none';", ad_element)
+            self.driver.execute_script("arguments[0].style.display = 'none';", ad_element)
         except Exception as e:
             print("ad element was not found")
 
-    def historical_stock_search_selector(self, driver):
+    def historical_stock_search_selector(self):
         print("selecting historical dropdown menu")
-        wait = WebDriverWait(driver, 3.0)
+        wait = WebDriverWait(self.driver, 3.0)
         try:
             selector1 = "/html/body/div[1]/main/section/section/section/article/div[1]/div[1]/div[1]" # Menu container
             wait.until(EC.presence_of_element_located((By.XPATH, selector1)))
             return selector1
         except Exception as e:
             print("selector1 for time period not found trying the second")
-            printInnerHTML("/html/body/div[1]/main/section/section/section/article/")
+            self.printInnerHTML("/html/body/div[1]/main/section/section/section/article/")
             try:
                 selector2 = "/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[2]/div/div/section"
                 wait.until(EC.presence_of_element_located((By.XPATH, selector2)))
@@ -772,39 +810,38 @@ class StocksScrapper(Scrapper):
             except Exception as e:
                 print("selector2 for time period not found")
 
-    def select_historical(self, driver, time_period, freq):
+    def select_historical(self, time_period, freq):
         print("Assessing historical stock prices table data ...", end='', flush=True)
-        # disable_ad(driver)
-        wait = WebDriverWait(driver, 3.0)
-        hs_se = historical_stock_search_selector(driver)
-        action = ActionChains(driver)
-        hs_se_button = driver.find_element(By.XPATH, f"{hs_se}/button")
+        # self.disable_ad()
+        wait = WebDriverWait(self.driver, 3.0)
+        hs_se = self.historical_stock_search_selector(self.driver)
+        # action = ActionChains(self.driver)
+        hs_se_button = self.driver.find_element(By.XPATH, f"{hs_se}/button")
         hs_se_button.click()
-
-        time.sleep(3)
+        
         try:
             '''
             TODO Add Frequency HTML button element
             '''
             hs_period_dropdown_div = ''
             if (time_period == '1d'):
-                hs_period_dropdown_div = driver.find_element(By.XPATH, f"{hs_se}/div/div/div[2]/section/div[1]/button[1]")
+                hs_period_dropdown_div = self.driver.find_element(By.XPATH, f"{hs_se}/div/div/div[2]/section/div[1]/button[1]")
                 hs_period_dropdown_div.click()
             elif (time_period == '5d'):
-                hs_period_dropdown_div = driver.find_element(By.XPATH, f"{hs_se}/div/div/div[2]/section/div[1]/button[2]")
+                hs_period_dropdown_div = self.driver.find_element(By.XPATH, f"{hs_se}/div/div/div[2]/section/div[1]/button[2]")
                 hs_period_dropdown_div.click()
             elif (time_period == '1y'):
-                hs_period_dropdown_div = driver.find_element(By.XPATH, f"{hs_se}/div/div/div[2]/section/div[1]/button[6]")
+                hs_period_dropdown_div = self.driver.find_element(By.XPATH, f"{hs_se}/div/div/div[2]/section/div[1]/button[6]")
                 hs_period_dropdown_div.click()
         except Exception as e:
             print("Error on select_historical(): ", e)
             print("====================================================================")
             print("Printing inner HTML")
             print("====================================================================")
-            printInnerHTML(hs_se)
+            self.printInnerHTML(hs_se)
 
 
-        wait.until(EC.presence_of_element_located((By.XPATH, STOCKS_HTML_TABLE)))
+        wait.until(EC.presence_of_element_located((By.XPATH, PostgresSQL_table_queries.STOCKS_HTML_TABLE)))
         print("Task finished")
         
     def startScrapping(self):
@@ -818,28 +855,30 @@ class StocksScrapper(Scrapper):
         frombook = ''
         self.initDB('postgres', "historical", "cryptostocks", "postgres", PostgresSQL_table_queries.HISTORICAL_CRYPTO_STOCKS_TABLE_QUERY)
         if (len(frombook) > 0):
-            usd_books = from_book(frombook)
+            usd_books = self.from_book(frombook)
 
         try:
-            WebDriverWait(driver,5).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            print("Corso1")
+            WebDriverWait(self.driver,1).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            print("Corso2")
             try:
                 for book in usd_books:
                     print(f'Book: {book}')
                     target_url = f"https://finance.yahoo.com/quote/{book.upper()}/history?p={book.upper()}"
                     print(target_url)
-                    driver.get(target_url)
+                    self.driver.get(target_url)
 
-                    if(nomatchresult(driver, book)):
+                    if(self.nomatchresult(self.driver, book)):
                         print("skipping to next ticket")
                         # save_unavailable_book(book)
                         print("====================================================================")
                         continue
 
-                    select_historical(driver, time_period, frequency)
+                    self.select_historical(self.driver, time_period, frequency)
                     time.sleep(1)
 
-                    is_at_bottom(driver)
-                    table = driver.find_element(By.XPATH, STOCKS_HTML_TABLE_BODY)
+                    self.isAtBottom()
+                    table = self.driver.find_element(By.XPATH, PostgresSQL_table_queries.STOCKS_HTML_TABLE_BODY)
                     # Get all rows of the table
                     rows = table.find_elements(By.TAG_NAME, "tr")
 
@@ -856,7 +895,7 @@ class StocksScrapper(Scrapper):
                         if(len(row_data) != 7):
                             print("skipping to next row")
                             continue
-                        row_data = parse_row_data(row_data)
+                        row_data = self.parse_row_data(row_data)
                         row_data.insert(0, book)
                         row_data.insert(0, REFERENCE)
                         try:
@@ -886,8 +925,8 @@ class StocksScrapper(Scrapper):
             print("-----")
             print(toe.args)
         finally:
-            if(Debug):
-                delete_table("historical", conn)
+            if(self.debugDB):
+                self.db_conn.delete_table("historical")
             self.db_conn.close_connection()
-        if (not KEEP_DRIVER_OPEN):
-            driver.close()
+        if (not self.keepBrowserOpen):
+            self.driver.close()
