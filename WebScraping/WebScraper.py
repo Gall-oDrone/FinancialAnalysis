@@ -220,7 +220,7 @@ class Scrapper:
             row_data = [item.replace(",", "") if isinstance(item, str) else item for item in row_data]
 
             # Parse elements at specific positions into desired data types
-            row_data[0] = parse_date(row_data[0])
+            row_data[0] = self.parse_date(row_data[0])
             row_data[1] = float(row_data[1])
             row_data[2] = float(row_data[2])
             row_data[3] = float(row_data[3])
@@ -685,33 +685,38 @@ class StocksScrapper(Scrapper):
     STOCKS_HTML_TABLE_BODY = "/html/body/div[1]/main/section/section/section/article/div[1]/div[3]/table/tbody"
     NO_RESULTS_FOUND_HTML_SPAN_EL = "/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[1]/div/div/section/section/div/div/span/span"
     
-    def __init__(self, *args, **kwargs):
-        super().__init__()
+    def __init__(self, debug=False, keepBrowserOpen=False, topics=[]):
+        super().__init__(debug, keepBrowserOpen, topics)
         self.print_book = False
         self.debugDB = False
-
+    
     def get_available_books(self):
         api = ApiModel.Api(timeout=5)
         avb_books = api.available_books()
         if self.print_book == True:
             print(f"Total Available Books: {len(avb_books.books)}")
             print(f"Available Books: {avb_books.books}")
-            return avb_books
-        
+        return avb_books
+
+    def replace_underscores_with_hyphens(self, pairs):
+        return [pair.replace('_', '-') for pair in pairs]
+   
     def filter_books(self, avb_books):
+        replace_underscores = True
         usd_books = [book for book in avb_books.books if 'mxn' not in book]
         usd_books = [book for book in usd_books if 'brl' not in book]
         usd_books = [book for book in usd_books if 'cop' not in book]
         usd_books = [book for book in usd_books if 'ars' not in book]
+        if replace_underscores:
+            usd_books = self.replace_underscores_with_hyphens(usd_books)
         print(f"Total USD Available Books: {len(usd_books)}")
         print(f"USD Available Books: {usd_books}")
+        return usd_books
 
-    def from_book(self, book):
+    def from_book(self, book, books):
         cum = []
         start = False
-        avb_books = self.get_available_books()
-        usd_books = self.filter_books(avb_books)
-        for usd_book in usd_books:
+        for usd_book in books:
             if usd_book == book:
                 start = True
             if start:
@@ -761,7 +766,7 @@ class StocksScrapper(Scrapper):
 
     def nomatchresult(self, book):
         try:
-            if (self.driver.current_url == f"https://finance.yahoo.com/lookup?s={book.upper()}" or check_html_el_exist(driver, NO_RESULTS_FOUND_HTML_SPAN_EL)):
+            if (self.driver.current_url == f"https://finance.yahoo.com/lookup?s={book.upper()}" or self.check_html_el_exist(self.driver, self.NO_RESULTS_FOUND_HTML_SPAN_EL)):
                 print(f"no data was found for {book.upper()}")
                 return True
         except Exception as nse:
@@ -779,10 +784,16 @@ class StocksScrapper(Scrapper):
         SearchBar.send_keys(Keys.ENTER)
 
     def select_historical_li(self):
-        li_historical_a = self.driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[2]/div/div/div[7]/div/div/section/div/ul/li[4]/a')
+        li_historical_a = None
+        try:
+            li_historical_a = self.driver.find_element(By.XPATH, '/html/body/div[1]/div/div/div[1]/div/div[2]/div/div/div[7]/div/div/section/div/ul/li[4]/a')
+        except Exception as e:
+            print("error on select_historical_li(): ", e)
+            li_historical_a = self.driver.find_element(By.XPATH, '/html/body/div[1]/main/section/section/aside/section/nav/ul/li[5]/a')
         action = ActionChains(self.driver)
         action.click(on_element = li_historical_a)
         action.perform()
+        time.sleep(3)
 
     def disable_ad(self): 
         wait = WebDriverWait(self.driver, 3.0)
@@ -795,7 +806,7 @@ class StocksScrapper(Scrapper):
 
     def historical_stock_search_selector(self):
         print("selecting historical dropdown menu")
-        wait = WebDriverWait(self.driver, 3.0)
+        wait = WebDriverWait(self.driver, 1.0)
         try:
             selector1 = "/html/body/div[1]/main/section/section/section/article/div[1]/div[1]/div[1]" # Menu container
             wait.until(EC.presence_of_element_located((By.XPATH, selector1)))
@@ -814,7 +825,7 @@ class StocksScrapper(Scrapper):
         print("Assessing historical stock prices table data ...", end='', flush=True)
         # self.disable_ad()
         wait = WebDriverWait(self.driver, 3.0)
-        hs_se = self.historical_stock_search_selector(self.driver)
+        hs_se = self.historical_stock_search_selector()
         # action = ActionChains(self.driver)
         hs_se_button = self.driver.find_element(By.XPATH, f"{hs_se}/button")
         hs_se_button.click()
@@ -841,7 +852,7 @@ class StocksScrapper(Scrapper):
             self.printInnerHTML(hs_se)
 
 
-        wait.until(EC.presence_of_element_located((By.XPATH, PostgresSQL_table_queries.STOCKS_HTML_TABLE)))
+        wait.until(EC.presence_of_element_located((By.XPATH, self.STOCKS_HTML_TABLE)))
         print("Task finished")
         
     def startScrapping(self):
@@ -852,33 +863,33 @@ class StocksScrapper(Scrapper):
         time_period = '1d'
         frequency = 'daily'
         show_row_data = True
-        frombook = ''
+        from_book = ''
+        avb_books = self.get_available_books()
+        usd_books = self.filter_books(avb_books)
         self.initDB('postgres', "historical", "cryptostocks", "postgres", PostgresSQL_table_queries.HISTORICAL_CRYPTO_STOCKS_TABLE_QUERY)
-        if (len(frombook) > 0):
-            usd_books = self.from_book(frombook)
+        if (len(from_book) > 0):
+            usd_books = self.from_book(from_book, usd_books)
 
         try:
-            print("Corso1")
-            WebDriverWait(self.driver,1).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-            print("Corso2")
+            WebDriverWait(self.driver,5).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             try:
                 for book in usd_books:
                     print(f'Book: {book}')
-                    target_url = f"https://finance.yahoo.com/quote/{book.upper()}/history?p={book.upper()}"
+                    target_url = f"https://finance.yahoo.com/quote/{book.upper()}/history" # f"https://finance.yahoo.com/quote/{book.upper()}/history?p={book.upper()}"
                     print(target_url)
                     self.driver.get(target_url)
 
-                    if(self.nomatchresult(self.driver, book)):
+                    if(self.nomatchresult(book)):
                         print("skipping to next ticket")
                         # save_unavailable_book(book)
                         print("====================================================================")
                         continue
 
-                    self.select_historical(self.driver, time_period, frequency)
-                    time.sleep(1)
+                    # self.select_historical(time_period, frequency)
+                    # time.sleep(3)
+                    #self.isAtBottom()
 
-                    self.isAtBottom()
-                    table = self.driver.find_element(By.XPATH, PostgresSQL_table_queries.STOCKS_HTML_TABLE_BODY)
+                    table = self.driver.find_element(By.XPATH, self.STOCKS_HTML_TABLE_BODY)
                     # Get all rows of the table
                     rows = table.find_elements(By.TAG_NAME, "tr")
 
@@ -887,7 +898,9 @@ class StocksScrapper(Scrapper):
                     #df_book = pd.DataFrame(table_data, columns=Header)
                     # Iterate through each row
                     print("Scraping raw stock prices data task started")
-                    for row in rows:
+                    for idx, row in enumerate(rows):
+                        if time_period == '1d' and idx > 7:
+                            break
                         # Get all columns (cells) of the row
                         columns = row.find_elements(By.TAG_NAME, "td")
                         row_data = []
@@ -928,5 +941,5 @@ class StocksScrapper(Scrapper):
             if(self.debugDB):
                 self.db_conn.delete_table("historical")
             self.db_conn.close_connection()
-        if (not self.keepBrowserOpen):
+        if (self.keepBrowserOpen == False):
             self.driver.close()

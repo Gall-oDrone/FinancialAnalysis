@@ -194,7 +194,7 @@ class PgConn:
             # Fetch all records
             data = cursor.fetchall()
 
-            columns = ["id", "source", "category", "headline", "href", "summary", "content", "datetime"]
+            columns = ["id", "source", "headline", "href", "summary", "content", "author", "minsread","datetime"]
             df = pd.DataFrame(data, columns=columns)
             return df
 

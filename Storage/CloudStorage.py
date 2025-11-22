@@ -62,16 +62,15 @@ class CloudStorageProvider:
                 # Construct the folder path based on the specified datetime components
                 folder_path = prefix + ""
                 if year is not None:
-                    folder_path += f"{year}/"
+                    folder_path += f"year={year}/"
                 if month is not None:
-                    folder_path += f"{month:02}/"
+                    folder_path += f"month={month:02}/"
                 if day is not None:
-                    folder_path += f"{day:02}/"
+                    folder_path += f"day={day:02}/"
                 if hour is not None:
-                    folder_path += f"{hour:02}/"
+                    folder_path += f"hour={hour:02}/"
                 if minute is not None:
-                    folder_path += f"{minute:02}/"
-                
+                    folder_path += f"minute={minute:02}/"
                 # List objects in the specified folder
                 response = self.s3_client.list_objects_v2(Bucket=bucket_name, Prefix=folder_path)
                 dataframes = []
@@ -125,7 +124,7 @@ class CloudStorageProvider:
                     return
             
             # Upload the CSV data to the specified S3 bucket
-            folder_path = f"{prefix_path}/"
+            folder_path = f"{prefix_path}/format=csv/"
             key = folder_path + f"{file_name}.csv"
             self.s3_client.put_object(Bucket=bucket_name, Key=key, ACL='public-read', 
                                       Body=csv_buffer.getvalue(), ContentType='text/csv')
@@ -135,7 +134,7 @@ class CloudStorageProvider:
             
             print(f"Data uploaded to S3 bucket '{bucket_name}' under folder '{key}'")
             
-        def upload_dataframe_with_timestamp(self, dataframe, bucket_name, prefix_path):
+        def upload_dataframe_with_timestamp(self, dataframe, bucket_name, prefix_path, file_format):
             # Get current timestamp
             now = datetime.now()
             for index, row in dataframe.iterrows():
@@ -148,12 +147,8 @@ class CloudStorageProvider:
                 book = row['book']
                 # Create folder structure based on the current timestamp
                 # Sets folder structure to Year/Month/day
-                folder_path = f"{prefix_path}/{book.lower()}/{datetime_obj.year}/{datetime_obj.month:02}/{datetime_obj.day:02}/"
+                folder_path = f"{prefix_path}/book={book.lower()}/year={datetime_obj.year}/month={datetime_obj.month:02}/day={datetime_obj.day:02}/format={file_format}/"
                 
-                # Convert the DataFrame to CSV format
-                csv_buffer = StringIO()
-                pd.DataFrame(row).T.to_csv(csv_buffer, index=False)
-
                 # Check if the bucket exists
                 try:
                     self.s3_client.head_bucket(Bucket=bucket_name)
@@ -164,18 +159,25 @@ class CloudStorageProvider:
                     else:
                         print("Error:", e)
                         return
+                
+                key=""
+                if file_format == "csv":
+                    # Convert the DataFrame to CSV format
+                    csv_buffer = StringIO()
+                    pd.DataFrame(row).T.to_csv(csv_buffer, index=False)
 
-                # Upload the CSV data to the specified S3 bucket under the folder structure
-                key = folder_path + f"{datetime_obj.year:02}{datetime_obj.month:02}{datetime_obj.day:02}-{book.lower()}.csv"
-                self.s3_client.put_object(Bucket=bucket_name, Key=key, ACL='public-read', 
-                                          Body=csv_buffer.getvalue(), ContentType='text/csv')
+                    # Upload the CSV data to the specified S3 bucket under the folder structure
+                    key = folder_path + f"{datetime_obj.year:02}{datetime_obj.month:02}{datetime_obj.day:02}-{book.lower()}.csv"
+                    self.s3_client.put_object(Bucket=bucket_name, Key=key, ACL='public-read', 
+                                              Body=csv_buffer.getvalue(), ContentType='text/csv')
 
                 # Set the bucket ACL to allow public read access
                 self.s3_client.put_bucket_acl(Bucket=bucket_name, ACL='public-read')
 
                 print(f"Data uploaded to S3 bucket '{bucket_name}' under folder '{key}'")
+            print(f"Task finished: all files were succesfully uploaded to S3 bucket {bucket_name}")
             
-        def upload_dataframe_with_datetime_subfolders(self, dataframe, bucket_name, prefix_path):
+        def upload_dataframe_with_datetime_subfolders(self, dataframe, bucket_name, prefix_path, file_format):
             # Iterate through each row of the DataFrame
             for index, row in dataframe.iterrows():
                 # Extract datetime from the 'datetime' column
@@ -185,7 +187,7 @@ class CloudStorageProvider:
                 datetime_obj = pd.to_datetime(datetime_str)
                 
                 # Create folder structure based on the datetime
-                folder_path = f"{prefix_path}/{datetime_obj.year}/{datetime_obj.month:02}/{datetime_obj.day:02}/{datetime_obj.hour:02}/{datetime_obj.minute:02}/{datetime_obj.second:02}/"
+                folder_path = f"{prefix_path}/year={datetime_obj.year}/month={datetime_obj.month:02}/day={datetime_obj.day:02}/hour={datetime_obj.hour:02}/minute={datetime_obj.minute:02}/second={datetime_obj.second:02}/format={file_format}/"
                 
                 # Convert the current row of DataFrame to CSV format
                 csv_buffer = StringIO()
@@ -203,14 +205,16 @@ class CloudStorageProvider:
                         return
                 
                 # Upload the CSV data to the specified S3 bucket under the folder structure
-                key = folder_path + f"{id_str}.csv"
-                self.s3_client.put_object(Bucket=bucket_name, Key=key, ACL='public-read', 
-                                          Body=csv_buffer.getvalue(), ContentType='text/csv')
-                
+                key = ""
+                if file_format == "csv":
+                    key = folder_path + f"{id_str}.csv"
+                    self.s3_client.put_object(Bucket=bucket_name, Key=key, ACL='public-read', 
+                                              Body=csv_buffer.getvalue(), ContentType='text/csv')
                 # Set the bucket ACL to allow public read access
                 self.s3_client.put_bucket_acl(Bucket=bucket_name, ACL='public-read')
                 
                 print(f"Data for row {index} with id '{id_str}' uploaded to S3 bucket '{bucket_name}' under folder '{key}'")
+            print(f"Task finished: all files were succesfully uploaded to S3 bucket {bucket_name}")
 
         def delete_bucket(self, bucket_name):
             try:
