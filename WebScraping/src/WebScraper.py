@@ -1,6 +1,6 @@
 import sys, os, csv
-sys.path.append('../Storage')
-sys.path.append('../BitsoApi')
+sys.path.append('../../Storage')
+sys.path.append('../../BitsoApi')
 
 import time
 import json
