@@ -1,0 +1,507 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Financial Analysis - EKS Cluster and Node Groups'
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: financial-analysis
+    Description: Name of the project
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  KubernetesVersion:
+    Type: String
+    Default: '1.29'
+    AllowedValues:
+      - '1.27'
+      - '1.28'
+      - '1.29'
+      - '1.30'
+    Description: Kubernetes version for EKS cluster
+
+  NodeGroupDesiredCapacity:
+    Type: Number
+    Default: 2
+    Description: Desired number of worker nodes
+
+  NodeGroupMinSize:
+    Type: Number
+    Default: 1
+    Description: Minimum number of worker nodes
+
+  NodeGroupMaxSize:
+    Type: Number
+    Default: 5
+    Description: Maximum number of worker nodes
+
+  NodeInstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+    Description: EC2 instance type for worker nodes
+
+  NodeDiskSize:
+    Type: Number
+    Default: 50
+    Description: Node disk size in GB
+
+  EnablePublicAccess:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable public access to EKS API endpoint
+
+  EnablePrivateAccess:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable private access to EKS API endpoint
+
+  UseSpotInstances:
+    Type: String
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Use spot instances for worker nodes
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  EnableSpot: !Equals [!Ref UseSpotInstances, 'true']
+  IsProd: !Equals [!Ref Environment, 'prod']
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+  # ---------------------------------------------------------------------------
+  # EKS Cluster IAM Role
+  # ---------------------------------------------------------------------------
+  EKSClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-eks-cluster-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSVPCResourceController
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-eks-cluster-role'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # EKS Node Group IAM Role
+  # ---------------------------------------------------------------------------
+  EKSNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-eks-node-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-eks-node-role'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Custom Policy for Node Role (S3, Secrets Manager access)
+  EKSNodeCustomPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-${Environment}-eks-node-custom-policy'
+      Roles:
+        - !Ref EKSNodeRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${ProjectName}-${Environment}-*'
+              - !Sub 'arn:aws:s3:::${ProjectName}-${Environment}-*/*'
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource:
+              - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${Environment}/*'
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+            Resource:
+              - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/${Environment}/*'
+
+  # ---------------------------------------------------------------------------
+  # Security Groups
+  # ---------------------------------------------------------------------------
+  EKSClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${Environment}-eks-cluster-sg'
+      GroupDescription: Security group for EKS cluster control plane
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-${Environment}-VPCId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS from anywhere
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-eks-cluster-sg'
+        - Key: Environment
+          Value: !Ref Environment
+
+  EKSNodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${Environment}-eks-node-sg'
+      GroupDescription: Security group for EKS worker nodes
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-${Environment}-VPCId'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-eks-node-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: !Sub 'kubernetes.io/cluster/${ProjectName}-${Environment}'
+          Value: owned
+
+  # Node SG Ingress Rules
+  NodeSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EKSNodeSecurityGroup
+      IpProtocol: '-1'
+      SourceSecurityGroupId: !Ref EKSNodeSecurityGroup
+      Description: Allow node to communicate with each other
+
+  NodeSecurityGroupFromCluster:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EKSNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 1025
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref EKSClusterSecurityGroup
+      Description: Allow cluster control plane to communicate with nodes
+
+  NodeSecurityGroupFromClusterHttps:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EKSNodeSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref EKSClusterSecurityGroup
+      Description: Allow pods to communicate with the cluster API Server
+
+  ClusterControlPlaneSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EKSClusterSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref EKSNodeSecurityGroup
+      Description: Allow pods to communicate with the cluster API Server
+
+  # ---------------------------------------------------------------------------
+  # KMS Key for EKS Secrets Encryption
+  # ---------------------------------------------------------------------------
+  EKSSecretsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for EKS secrets encryption
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow EKS to use the key
+            Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-eks-secrets-key'
+        - Key: Environment
+          Value: !Ref Environment
+
+  EKSSecretsKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${Environment}-eks-secrets'
+      TargetKeyId: !Ref EKSSecretsKey
+
+  # ---------------------------------------------------------------------------
+  # EKS Cluster
+  # ---------------------------------------------------------------------------
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}'
+      Version: !Ref KubernetesVersion
+      RoleArn: !GetAtt EKSClusterRole.Arn
+      EncryptionConfig:
+        - Resources:
+            - secrets
+          Provider:
+            KeyArn: !GetAtt EKSSecretsKey.Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - !Ref EKSClusterSecurityGroup
+        SubnetIds:
+          - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-PublicSubnet1Id'
+          - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-PublicSubnet2Id'
+          - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-PrivateSubnet1Id'
+          - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-PrivateSubnet2Id'
+        EndpointPublicAccess: !Ref EnablePublicAccess
+        EndpointPrivateAccess: !Ref EnablePrivateAccess
+      Logging:
+        ClusterLogging:
+          EnabledTypes:
+            - Type: api
+            - Type: audit
+            - Type: authenticator
+            - Type: controllerManager
+            - Type: scheduler
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ---------------------------------------------------------------------------
+  # EKS Managed Node Group
+  # ---------------------------------------------------------------------------
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodegroupName: !Sub '${ProjectName}-${Environment}-node-group'
+      NodeRole: !GetAtt EKSNodeRole.Arn
+      CapacityType: !If [EnableSpot, SPOT, ON_DEMAND]
+      ScalingConfig:
+        DesiredSize: !Ref NodeGroupDesiredCapacity
+        MinSize: !Ref NodeGroupMinSize
+        MaxSize: !Ref NodeGroupMaxSize
+      DiskSize: !Ref NodeDiskSize
+      InstanceTypes:
+        - !Ref NodeInstanceType
+      AmiType: AL2_x86_64
+      Subnets:
+        - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-PrivateSubnet1Id'
+        - Fn::ImportValue: !Sub '${ProjectName}-${Environment}-PrivateSubnet2Id'
+      Labels:
+        role: worker
+        environment: !Ref Environment
+      Tags:
+        Name: !Sub '${ProjectName}-${Environment}-node-group'
+        Environment: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # EKS Add-ons
+  # ---------------------------------------------------------------------------
+  VPCCNIAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: EKSNodeGroup
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: vpc-cni
+      AddonVersion: v1.16.0-eksbuild.1
+      ResolveConflicts: OVERWRITE
+
+  CoreDNSAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: EKSNodeGroup
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: coredns
+      AddonVersion: v1.11.1-eksbuild.6
+      ResolveConflicts: OVERWRITE
+
+  KubeProxyAddon:
+    Type: AWS::EKS::Addon
+    DependsOn: EKSNodeGroup
+    Properties:
+      ClusterName: !Ref EKSCluster
+      AddonName: kube-proxy
+      AddonVersion: v1.29.0-eksbuild.2
+      ResolveConflicts: OVERWRITE
+
+  # ---------------------------------------------------------------------------
+  # OIDC Provider for IRSA
+  # ---------------------------------------------------------------------------
+  OIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 9e99a48a9960b14926bb7f3b02e22da2b0ab7280
+      Url: !GetAtt EKSCluster.OpenIdConnectIssuerUrl
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-oidc-provider'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # ECR Repository
+  # ---------------------------------------------------------------------------
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}'
+      ImageTagMutability: MUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 30 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 30
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}'
+        - Key: Environment
+          Value: !Ref Environment
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  ClusterName:
+    Description: EKS Cluster Name
+    Value: !Ref EKSCluster
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ClusterName'
+
+  ClusterArn:
+    Description: EKS Cluster ARN
+    Value: !GetAtt EKSCluster.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ClusterArn'
+
+  ClusterEndpoint:
+    Description: EKS Cluster Endpoint
+    Value: !GetAtt EKSCluster.Endpoint
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ClusterEndpoint'
+
+  ClusterSecurityGroupId:
+    Description: EKS Cluster Security Group ID
+    Value: !Ref EKSClusterSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ClusterSecurityGroupId'
+
+  NodeSecurityGroupId:
+    Description: EKS Node Security Group ID
+    Value: !Ref EKSNodeSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-NodeSecurityGroupId'
+
+  NodeRoleArn:
+    Description: EKS Node IAM Role ARN
+    Value: !GetAtt EKSNodeRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-NodeRoleArn'
+
+  OIDCProviderArn:
+    Description: OIDC Provider ARN for IRSA
+    Value: !GetAtt OIDCProvider.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-OIDCProviderArn'
+
+  OIDCProviderUrl:
+    Description: OIDC Provider URL
+    Value: !GetAtt EKSCluster.OpenIdConnectIssuerUrl
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-OIDCProviderUrl'
+
+  ECRRepositoryUri:
+    Description: ECR Repository URI
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ECRRepositoryUri'
+
+  KubeConfigCommand:
+    Description: Command to configure kubectl
+    Value: !Sub 'aws eks update-kubeconfig --name ${EKSCluster} --region ${AWS::Region}'
+

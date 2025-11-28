@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: financial-analysis
+  labels:
+    app.kubernetes.io/name: financial-analysis
+    app.kubernetes.io/managed-by: kubectl
+

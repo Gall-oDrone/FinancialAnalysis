@@ -1,0 +1,15 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: financial-scraper-pdb
+  namespace: financial-analysis
+  labels:
+    app.kubernetes.io/name: financial-analysis
+    app.kubernetes.io/component: scraper
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: financial-analysis
+      app.kubernetes.io/component: scraper
+
