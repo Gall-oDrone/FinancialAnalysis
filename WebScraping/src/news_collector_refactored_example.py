@@ -13,6 +13,7 @@ from functools import wraps
 from typing import List, Optional, Dict, Generator
 import time
 import uuid
+import hashlib
 
 import pandas as pd
 from selenium import webdriver
@@ -22,6 +23,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
+import os
+import shutil
 
 from config.settings import get_settings
 from utils.logging import get_logger
@@ -258,13 +261,32 @@ class WebDriverManager:
         
         if self.config.headless:
             options.add_argument('--headless')
+            options.add_argument('--headless=new')  # Use new headless mode
         
         options.add_argument('--disable-gpu')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--no-sandbox')
         options.add_argument('--ignore-certificate-errors')
+        # Additional options to reduce bot detection
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+        options.add_experimental_option('useAutomationExtension', False)
         
-        service = ChromeService(ChromeDriverManager().install())
+        # Check for system chromedriver (e.g., in Docker container)
+        chromedriver_path = os.getenv('CHROMEDRIVER_PATH') or shutil.which('chromedriver')
+        if chromedriver_path and os.path.exists(chromedriver_path):
+            logger.info(f"Using system chromedriver at: {chromedriver_path}")
+            service = ChromeService(chromedriver_path)
+        else:
+            logger.info("Using webdriver_manager to get chromedriver")
+            service = ChromeService(ChromeDriverManager().install())
+        
+        # Set Chrome binary if specified
+        chrome_bin = os.getenv('CHROME_BIN') or shutil.which('chromium') or shutil.which('google-chrome')
+        if chrome_bin:
+            options.binary_location = chrome_bin
+            logger.info(f"Using Chrome binary at: {chrome_bin}")
+        
         self.driver = webdriver.Chrome(service=service, options=options)
         self.driver.set_page_load_timeout(self.config.page_load_timeout)
         
@@ -302,14 +324,65 @@ class PageScraper:
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
             
-            # Verify we're on the correct URL
-            if self.driver.current_url != url:
-                logger.warning(
-                    f"URL mismatch. Expected: {url}, Got: {self.driver.current_url}"
-                )
-                return False
+            # Handle consent page redirect (Yahoo Finance)
+            current_url = self.driver.current_url
+            if "consent.yahoo.com" in current_url:
+                logger.info("Detected consent page, attempting to accept...")
+                try:
+                    # Try to find and click the accept button
+                    accept_selectors = [
+                        "button[name='agree']",
+                        "button[value='agree']",
+                        "//button[contains(text(), 'Accept')]",
+                        "//button[contains(text(), 'Agree')]",
+                        "//button[contains(text(), 'Accept all')]",
+                        ".consent-button",
+                        "#consent-button"
+                    ]
+                    
+                    accepted = False
+                    for selector in accept_selectors:
+                        try:
+                            if selector.startswith("//"):
+                                accept_button = WebDriverWait(self.driver, 5).until(
+                                    EC.element_to_be_clickable((By.XPATH, selector))
+                                )
+                            else:
+                                accept_button = WebDriverWait(self.driver, 5).until(
+                                    EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                                )
+                            accept_button.click()
+                            logger.info("Clicked accept button on consent page")
+                            time.sleep(2)  # Wait for redirect
+                            accepted = True
+                            break
+                        except (TimeoutException, NoSuchElementException):
+                            continue
+                    
+                    if not accepted:
+                        logger.warning("Could not find consent accept button, trying to navigate back")
+                        # Try to navigate back to original URL
+                        self.driver.get(url)
+                        time.sleep(2)
+                    
+                except Exception as e:
+                    logger.warning(f"Error handling consent page: {e}, trying to navigate to original URL")
+                    self.driver.get(url)
+                    time.sleep(2)
             
-            logger.info(f"Successfully loaded URL: {url}")
+            # Check if we're on the correct URL (allow for some URL variations)
+            current_url = self.driver.current_url
+            if url not in current_url and "consent.yahoo.com" not in current_url:
+                # If redirected but not to consent page, might still be valid
+                if "finance.yahoo.com" in current_url:
+                    logger.info(f"Redirected to: {current_url}, continuing...")
+                else:
+                    logger.warning(
+                        f"URL mismatch. Expected: {url}, Got: {current_url}"
+                    )
+                    return False
+            
+            logger.info(f"Successfully loaded URL: {self.driver.current_url}")
             return True
             
         except TimeoutException as e:
@@ -409,25 +482,46 @@ class NewsExtractor:
         """Extract article data from a list item element."""
         try:
             article = NewsArticle(
-                id=uuid.uuid4().int,
+                id=0,  # Will be set after we get href
                 source="",
                 headline="",
                 href=""
             )
             
-            # Extract headline and href
-            try:
-                headline_elem = self.selector.find_element(element, self.selectors.HEADLINE_LARGE)
-                article.headline = self.extract_text_safe(headline_elem)
-                article.href = self.extract_attribute_safe(headline_elem, "href")
-            except ElementNotFoundError:
+            # Extract headline and href - try multiple selectors
+            headline_elem = None
+            headline_selectors = [
+                self.selectors.HEADLINE_LARGE,
+                self.selectors.HEADLINE_SMALL,
+                ".//a[contains(@href, '/news/')]",
+                ".//a[contains(@class, 'link')]",
+                ".//h3//a",
+                ".//h2//a",
+                ".//h4//a",
+                ".//a[@href]"
+            ]
+            
+            for selector in headline_selectors:
                 try:
-                    headline_elem = self.selector.find_element(element, self.selectors.HEADLINE_SMALL)
-                    article.headline = self.extract_text_safe(headline_elem)
-                    article.href = self.extract_attribute_safe(headline_elem, "href")
-                except ElementNotFoundError:
-                    logger.warning("Could not find headline element")
-                    return None
+                    headline_elem = self.selector.find_element(element, selector)
+                    headline_text = self.extract_text_safe(headline_elem)
+                    headline_href = self.extract_attribute_safe(headline_elem, "href")
+                    
+                    # Make sure we got valid data
+                    if headline_text and headline_href:
+                        article.headline = headline_text
+                        article.href = headline_href
+                        break
+                except (ElementNotFoundError, NoSuchElementException):
+                    continue
+            
+            if not headline_elem or not article.headline or not article.href:
+                logger.debug("Could not find headline element with any selector")
+                return None
+            
+            # Generate ID from href hash to ensure uniqueness and fit in bigint
+            href_hash = hashlib.md5(article.href.encode()).hexdigest()[:16]
+            article.id = int(href_hash, 16) % (2**63 - 1)  # Ensure it fits in PostgreSQL bigint
             
             # Extract summary
             try:
@@ -465,11 +559,46 @@ class NewsExtractor:
         articles = []
         
         try:
+            # Wait for page to be ready
+            time.sleep(3)  # Give JavaScript time to render
+            
+            # Wait for stream items container with timeout
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, YahooFinanceSelectors.STREAM_ITEMS))
+                )
+            except TimeoutException:
+                logger.warning("Stream items container not found, trying alternative selectors...")
+                # Try alternative selectors
+                alt_selectors = [
+                    "//div[contains(@class, 'news-stream')]",
+                    "//div[contains(@id, 'stream')]",
+                    "//ul[contains(@class, 'stream')]",
+                    "//div[contains(@class, 'js-stream-content')]"
+                ]
+                found = False
+                for alt_selector in alt_selectors:
+                    try:
+                        WebDriverWait(driver, 5).until(
+                            EC.presence_of_element_located((By.XPATH, alt_selector))
+                        )
+                        logger.info(f"Found container with alternative selector: {alt_selector}")
+                        found = True
+                        break
+                    except TimeoutException:
+                        continue
+                if not found:
+                    logger.error("Could not find news container with any selector")
+                    return articles
+            
             # Find the stream items container
             stream_container = self.selector.find_element(
                 driver, 
                 YahooFinanceSelectors.STREAM_ITEMS
             )
+            
+            # Wait a bit more for content to load
+            time.sleep(2)
             
             # Find all news items
             news_items = self.selector.find_elements(
@@ -479,6 +608,21 @@ class NewsExtractor:
             
             logger.info(f"Found {len(news_items)} news items on page")
             
+            if len(news_items) == 0:
+                logger.warning("No news items found. Trying alternative item selectors...")
+                # Try alternative item selectors
+                alt_item_selectors = [
+                    ".//li",
+                    ".//div[contains(@class, 'item')]",
+                    ".//article",
+                    ".//div[contains(@class, 'js-stream-item')]"
+                ]
+                for alt_selector in alt_item_selectors:
+                    news_items = stream_container.find_elements(By.XPATH, alt_selector)
+                    if len(news_items) > 0:
+                        logger.info(f"Found {len(news_items)} items with alternative selector: {alt_selector}")
+                        break
+            
             for item in news_items:
                 article = self.extract_article_from_element(item, driver)
                 if article:
@@ -487,7 +631,7 @@ class NewsExtractor:
             logger.info(f"Successfully extracted {len(articles)} articles")
             
         except ElementNotFoundError as e:
-            logger.error("Could not find news items container", exc_info=True)
+            logger.error(f"Could not find news items container: {e}", exc_info=True)
         except Exception as e:
             logger.error("Failed to extract articles from page", exc_info=True)
         

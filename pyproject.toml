@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Diego Gallo Valenzuela", email = ""}
+    {name = "Diego Gallo Valenzuela"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -56,7 +56,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["WebScraping*", "Storage*", "BitsoApi*", "FinancialAnalysis*", "DataProcessing*"]
+include = ["WebScraping*", "Storage*", "BitsoApi*", "FinancialAnalysis*", "DataProcessing*", "config*", "utils*"]
 exclude = ["tests*", "*.tests", "*.tests.*", "tests.*"]
 
 [tool.black]
@@ -81,7 +81,7 @@ extend-exclude = '''
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["WebScraping", "Storage", "BitsoApi", "FinancialAnalysis", "DataProcessing"]
+known_first_party = ["WebScraping", "Storage", "BitsoApi", "FinancialAnalysis", "DataProcessing", "config", "utils"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

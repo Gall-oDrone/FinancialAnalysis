@@ -1,0 +1,168 @@
+# =============================================================================
+# Financial Analysis - Docker Compose Configuration
+# =============================================================================
+# Services:
+#   - scraper: Web scraping application with Selenium + Chrome
+#   - postgres: PostgreSQL database (latest version)
+#   - pgadmin: PostgreSQL administration interface
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database Service
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: financial_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-financial_db}
+      POSTGRES_USER: ${POSTGRES_USER:-financial_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-financial_pass_123}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - financial_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-financial_user} -d ${POSTGRES_DB:-financial_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # pgAdmin - PostgreSQL Administration
+  # ---------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: financial_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
+      PGADMIN_LISTEN_PORT: 80
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5050:80"
+    networks:
+      - financial_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Web Scraper Application Service
+  # ---------------------------------------------------------------------------
+  scraper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: financial_scraper
+    restart: "no"
+    environment:
+      # Application settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-False}
+      # Database settings
+      PGDBHOST: postgres
+      PGDBPORT: 5432
+      PGDBNAME: ${POSTGRES_DB:-financial_db}
+      PGDBUSER: ${POSTGRES_USER:-financial_user}
+      PGDBPASS: ${POSTGRES_PASSWORD:-financial_pass_123}
+      # Scraping settings
+      SCRAPING_DEBUG: ${SCRAPING_DEBUG:-False}
+      SCRAPING_HEADLESS: "True"
+      SCRAPING_TIMEOUT: ${SCRAPING_TIMEOUT:-30}
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FILE: /app/logs/app.log
+      # Chrome settings for container
+      CHROME_BIN: /usr/bin/chromium
+      CHROMEDRIVER_PATH: /usr/bin/chromedriver
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      # Mount source code for development (optional, remove in production)
+      # - ./WebScraping:/app/WebScraping:ro
+      # - ./Storage:/app/Storage:ro
+      # - ./config:/app/config:ro
+    networks:
+      - financial_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Increase shared memory for Chrome
+    shm_size: '2gb'
+    # Security options for Chrome
+    security_opt:
+      - seccomp:unconfined
+    # Override default command to run news collector
+    command: ["python", "-c", "print('Scraper container ready. Use docker-compose run scraper python <your_script.py>')"]
+
+  # ---------------------------------------------------------------------------
+  # Development Service (optional)
+  # ---------------------------------------------------------------------------
+  scraper-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: financial_scraper_dev
+    profiles:
+      - dev
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "True"
+      PGDBHOST: postgres
+      PGDBPORT: 5432
+      PGDBNAME: ${POSTGRES_DB:-financial_db}
+      PGDBUSER: ${POSTGRES_USER:-financial_user}
+      PGDBPASS: ${POSTGRES_PASSWORD:-financial_pass_123}
+      SCRAPING_DEBUG: "True"
+      SCRAPING_HEADLESS: "True"
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      # Mount source code for live development
+      - ./WebScraping:/app/WebScraping
+      - ./Storage:/app/Storage
+      - ./config:/app/config
+      - ./utils:/app/utils
+    networks:
+      - financial_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    shm_size: '2gb'
+    security_opt:
+      - seccomp:unconfined
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  financial_network:
+    driver: bridge
+    name: financial_network
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: financial_postgres_data
+  pgadmin_data:
+    name: financial_pgadmin_data

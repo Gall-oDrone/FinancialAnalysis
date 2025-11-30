@@ -11,6 +11,10 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 future>=0.18.3
 
+# Jupyter for running notebooks
+jupyter>=1.0.0
+nbconvert>=7.0.0
+
 # Note: For production use, install from pyproject.toml using:
 # pip install -e .
 # or
