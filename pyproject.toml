@@ -104,6 +104,7 @@ filterwarnings = [
     "error",
     "ignore::UserWarning",
     "ignore::DeprecationWarning",
+    "ignore::RuntimeWarning",  # numpy/scipy binary compatibility in older envs
 ]
 
 [tool.mypy]

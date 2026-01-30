@@ -600,7 +600,12 @@ class KeywordExtractor(BaseTransformer):
         try:
             # Fit on single document
             tfidf_matrix = self._extractor.fit_transform([text])
-            feature_names = self._extractor.get_feature_names_out()
+            # Compatibility: get_feature_names_out() in sklearn>=1.0, get_feature_names() in older
+            feature_names = (
+                self._extractor.get_feature_names_out()
+                if hasattr(self._extractor, 'get_feature_names_out')
+                else self._extractor.get_feature_names()
+            )
             scores = tfidf_matrix.toarray()[0]
             
             # Get top keywords

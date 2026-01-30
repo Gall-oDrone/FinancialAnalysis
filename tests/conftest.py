@@ -4,6 +4,24 @@ Pytest configuration and shared fixtures.
 
 import pytest
 import pandas as pd
+
+# Ensure NLTK data is available for text transformer tests
+def _ensure_nltk_data():
+    """Download NLTK vader_lexicon if not present."""
+    try:
+        import nltk
+        import ssl
+        try:
+            _create_unverified_https_context = ssl._create_unverified_context
+        except AttributeError:
+            pass
+        else:
+            ssl._create_default_https_context = _create_unverified_https_context
+        nltk.download("vader_lexicon", quiet=True)
+    except Exception:
+        pass
+
+_ensure_nltk_data()
 import numpy as np
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch

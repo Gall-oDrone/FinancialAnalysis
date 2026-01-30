@@ -338,7 +338,7 @@ class GenAIExportStageHandler(PipelineStageHandler):
         
         try:
             s3_uri = export_to_s3_jsonl(
-                df,
+                data,
                 bucket_name=config.s3_bucket,
                 prefix_path=prefix_path,
                 file_name=file_name,

@@ -138,21 +138,30 @@ class GenAITextPreparator:
         }
         
         for field in include_fields:
-            # Use mapped name or original
-            export_name = field
+            # Use mapped export name when source field has one
             source_field = next((k for k, v in field_map.items() if v == field), field)
+            export_name = field_map.get(source_field, field)
             
-            if source_field in row.index and pd.notna(row[source_field]):
-                value = row[source_field]
-                
-                # Convert numpy types to Python types
-                if isinstance(value, (np.integer, np.floating)):
-                    value = value.item()
-                elif isinstance(value, np.ndarray):
-                    value = value.tolist()
-                
-                metadata[export_name] = value
-        
+            if source_field not in row.index:
+                continue
+            value = row[source_field]
+            # Avoid ambiguous truth for arrays/lists: use explicit checks
+            if value is None:
+                continue
+            if isinstance(value, (list, np.ndarray)):
+                if len(value) == 0:
+                    continue
+            elif pd.isna(value):
+                continue
+
+            # Convert numpy types to Python types
+            if isinstance(value, (np.integer, np.floating)):
+                value = value.item()
+            elif isinstance(value, np.ndarray):
+                value = value.tolist()
+
+            metadata[export_name] = value
+
         return metadata
 
 
@@ -290,14 +299,24 @@ def export_to_jsonl(
             article = GenAIArticle(
                 id=str(row.get(id_col, '')),
                 title=str(row.get(title_col, '')),
-                summary=str(row.get(summary_col, '')) if pd.notna(row.get(summary_col)) else None,
+                summary=(
+                    str(row.get(summary_col, ''))
+                    if row.get(summary_col) is not None
+                    and not (isinstance(row.get(summary_col), float) and pd.isna(row.get(summary_col)))
+                    else None
+                ),
                 body=preparator.clean_content(str(row.get(body_col, ''))),
                 metadata=preparator.create_metadata(row)
             )
             
             # Add embedding if requested and available
             article_dict = article.to_dict()
-            if include_embeddings and 'embedding' in row.index and pd.notna(row['embedding']):
+            emb = row.get('embedding')
+            has_embedding = (
+                include_embeddings and emb is not None
+                and (not isinstance(emb, (list, np.ndarray)) or len(emb) > 0)
+            )
+            if has_embedding:
                 article_dict['embedding'] = row['embedding']
             
             # Write as single JSON line

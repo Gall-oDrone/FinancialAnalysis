@@ -361,12 +361,14 @@ class TechnicalIndicators:
         # MACD
         if add_macd:
             macd_dict = TechnicalIndicators.macd(prices)
-            df.update(macd_dict)
-        
+            for col_name, series in macd_dict.items():
+                df[col_name] = series
+
         # Bollinger Bands
         if add_bollinger:
             bb_dict = TechnicalIndicators.bollinger_bands(prices)
-            df.update(bb_dict)
+            for col_name, series in bb_dict.items():
+                df[col_name] = series
         
         return df
 

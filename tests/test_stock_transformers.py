@@ -120,9 +120,10 @@ class TestTechnicalIndicators:
         
         assert isinstance(sma, pd.Series)
         assert len(sma) == len(sample_stocks_df)
-        # First 19 values should be NaN
-        assert pd.isna(sma.iloc[19])
-        assert not pd.isna(sma.iloc[20])
+        # For window=20, first 19 values (indices 0-18) are NaN
+        assert pd.isna(sma.iloc[18])
+        # Index 19 is first valid value
+        assert not pd.isna(sma.iloc[19])
     
     def test_ema(self, sample_stocks_df):
         """Test Exponential Moving Average."""
