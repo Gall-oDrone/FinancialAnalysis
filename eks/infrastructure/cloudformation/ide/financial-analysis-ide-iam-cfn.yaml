@@ -1,0 +1,499 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Financial Analysis - IAM Roles and Policies for IDE
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: financial-analysis
+    Description: Name of the project
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  EnableEksAccess:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable EKS cluster access from IDE
+
+  EnableRdsAccess:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable RDS access from IDE
+
+  EnableS3FullAccess:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable full S3 access (not recommended for production)
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  EnableEks: !Equals [!Ref EnableEksAccess, "true"]
+  EnableRds: !Equals [!Ref EnableRdsAccess, "true"]
+  EnableS3Full: !Equals [!Ref EnableS3FullAccess, "true"]
+  IsProd: !Equals [!Ref Environment, "prod"]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+  # ---------------------------------------------------------------------------
+  # IDE Instance Role
+  # ---------------------------------------------------------------------------
+  IdeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-ide-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+                - ssm.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Path: "/"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-ide-role"
+        - Key: Environment
+          Value: !Ref Environment
+
+  IdeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${ProjectName}-${Environment}-ide-profile"
+      Path: "/"
+      Roles:
+        - !Ref IdeInstanceRole
+
+  # ---------------------------------------------------------------------------
+  # Secrets Manager Access Policy
+  # ---------------------------------------------------------------------------
+  IdeSecretsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-secrets-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetResourcePolicy
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+              - secretsmanager:ListSecretVersionIds
+            Resource:
+              - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}-${Environment}-*"
+              - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${Environment}/*"
+          - Effect: Allow
+            Action:
+              - secretsmanager:ListSecrets
+            Resource: "*"
+
+  # ---------------------------------------------------------------------------
+  # ECR Access Policy
+  # ---------------------------------------------------------------------------
+  IdeEcrPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-ecr-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:PutImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:DescribeRepositories
+              - ecr:ListImages
+              - ecr:DescribeImages
+            Resource:
+              - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ProjectName}"
+              - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ProjectName}-*"
+          - Effect: Allow
+            Action:
+              - ecr-public:GetAuthorizationToken
+              - sts:GetServiceBearerToken
+            Resource: "*"
+
+  # ---------------------------------------------------------------------------
+  # S3 Access Policy
+  # ---------------------------------------------------------------------------
+  IdeS3Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-s3-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-*"
+              - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-*/*"
+          - !If
+            - EnableS3Full
+            - Effect: Allow
+              Action:
+                - s3:ListAllMyBuckets
+              Resource: "*"
+            - !Ref "AWS::NoValue"
+
+  # ---------------------------------------------------------------------------
+  # EKS Access Policy (Conditional)
+  # ---------------------------------------------------------------------------
+  IdeEksPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: EnableEks
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-eks-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - eks:DescribeCluster
+              - eks:ListClusters
+              - eks:DescribeNodegroup
+              - eks:ListNodegroups
+              - eks:DescribeFargateProfile
+              - eks:ListFargateProfiles
+              - eks:DescribeAddon
+              - eks:ListAddons
+              - eks:AccessKubernetesApi
+            Resource:
+              - !Sub "arn:aws:eks:${AWS::Region}:${AWS::AccountId}:cluster/${ProjectName}-*"
+              - !Sub "arn:aws:eks:${AWS::Region}:${AWS::AccountId}:nodegroup/${ProjectName}-*/*/*"
+              - !Sub "arn:aws:eks:${AWS::Region}:${AWS::AccountId}:fargateprofile/${ProjectName}-*/*/*"
+              - !Sub "arn:aws:eks:${AWS::Region}:${AWS::AccountId}:addon/${ProjectName}-*/*/*"
+          - Effect: Allow
+            Action:
+              - eks:ListClusters
+            Resource: "*"
+
+  # ---------------------------------------------------------------------------
+  # RDS Access Policy (Conditional)
+  # ---------------------------------------------------------------------------
+  IdeRdsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: EnableRds
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-rds-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - rds:DescribeDBInstances
+              - rds:DescribeDBClusters
+              - rds:DescribeDBSnapshots
+              - rds:DescribeDBSubnetGroups
+            Resource:
+              - !Sub "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:${ProjectName}-${Environment}-*"
+              - !Sub "arn:aws:rds:${AWS::Region}:${AWS::AccountId}:cluster:${ProjectName}-${Environment}-*"
+          - Effect: Allow
+            Action:
+              - rds-db:connect
+            Resource:
+              - !Sub "arn:aws:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:*/*"
+
+  # ---------------------------------------------------------------------------
+  # CloudWatch Logs Access Policy
+  # ---------------------------------------------------------------------------
+  IdeCloudWatchPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-cloudwatch-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogGroups
+              - logs:DescribeLogStreams
+              - logs:GetLogEvents
+              - logs:FilterLogEvents
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/eks/${ProjectName}-*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/eks/${ProjectName}-*:*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ProjectName}-${Environment}-*"
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${ProjectName}-${Environment}-*:*"
+          - Effect: Allow
+            Action:
+              - cloudwatch:GetMetricStatistics
+              - cloudwatch:ListMetrics
+              - cloudwatch:GetMetricData
+            Resource: "*"
+
+  # ---------------------------------------------------------------------------
+  # SSM Parameter Store Access Policy
+  # ---------------------------------------------------------------------------
+  IdeSsmParameterPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-ssm-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:GetParametersByPath
+              - ssm:PutParameter
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/${Environment}/*"
+          - Effect: Allow
+            Action:
+              - ssm:DescribeParameters
+            Resource: "*"
+
+  # ---------------------------------------------------------------------------
+  # KMS Access Policy
+  # ---------------------------------------------------------------------------
+  IdeKmsPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-kms-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+              - kms:GenerateDataKey
+            Resource: "*"
+            Condition:
+              StringLike:
+                kms:RequestAlias:
+                  - !Sub "alias/${ProjectName}-${Environment}-*"
+
+  # ---------------------------------------------------------------------------
+  # Lambda Bootstrap Execution Role
+  # ---------------------------------------------------------------------------
+  IdeLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${Environment}-ide-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-${Environment}-ide-lambda-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt IdeInstanceRole.Arn
+              - Effect: Allow
+                Action:
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                Resource: "*"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-ide-lambda-role"
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ---------------------------------------------------------------------------
+  # CloudFormation Access Policy (for Infrastructure Management from IDE)
+  # ---------------------------------------------------------------------------
+  IdeCloudFormationPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-cfn-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:ListStacks
+            Resource:
+              - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-*"
+          - Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+            Resource: "*"
+          # Restrict creation/update/delete in production
+          - !If
+            - IsProd
+            - !Ref "AWS::NoValue"
+            - Effect: Allow
+              Action:
+                - cloudformation:CreateStack
+                - cloudformation:UpdateStack
+                - cloudformation:DeleteStack
+              Resource:
+                - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-${Environment}-*"
+              Condition:
+                "Null":
+                  cloudformation:RoleARN: "true"
+
+  # ---------------------------------------------------------------------------
+  # IAM Read-Only Policy (for viewing roles and policies)
+  # ---------------------------------------------------------------------------
+  IdeIamReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-${Environment}-ide-iam-read-policy"
+      Roles:
+        - !Ref IdeInstanceRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:GetRolePolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:ListRoles
+              - iam:ListPolicies
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - sts:GetCallerIdentity
+            Resource: "*"
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  IdeInstanceRoleArn:
+    Description: ARN of the IDE Instance Role
+    Value: !GetAtt IdeInstanceRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeInstanceRoleArn"
+
+  IdeInstanceRoleName:
+    Description: Name of the IDE Instance Role
+    Value: !Ref IdeInstanceRole
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeInstanceRoleName"
+
+  IdeInstanceProfileArn:
+    Description: ARN of the IDE Instance Profile
+    Value: !GetAtt IdeInstanceProfile.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeInstanceProfileArn"
+
+  IdeInstanceProfileName:
+    Description: Name of the IDE Instance Profile
+    Value: !Ref IdeInstanceProfile
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeInstanceProfileName"
+
+  IdeLambdaExecutionRoleArn:
+    Description: ARN of the Lambda Execution Role
+    Value: !GetAtt IdeLambdaExecutionRole.Arn
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeLambdaRoleArn"
+
+  SecretsPolicy:
+    Description: Secrets Manager Policy ARN
+    Value: !Ref IdeSecretsPolicy
+
+  EcrPolicy:
+    Description: ECR Policy ARN
+    Value: !Ref IdeEcrPolicy
+
+  S3Policy:
+    Description: S3 Policy ARN
+    Value: !Ref IdeS3Policy
+
+  EksPolicy:
+    Condition: EnableEks
+    Description: EKS Policy ARN
+    Value: !Ref IdeEksPolicy
+
+  RdsPolicy:
+    Condition: EnableRds
+    Description: RDS Policy ARN
+    Value: !Ref IdeRdsPolicy

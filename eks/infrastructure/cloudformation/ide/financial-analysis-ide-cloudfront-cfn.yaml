@@ -1,0 +1,355 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Financial Analysis - CloudFront Distribution for IDE (Standalone Template)
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: financial-analysis
+    Description: Name of the project
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  IdeInstancePublicDns:
+    Type: String
+    Description: Public DNS name of the IDE EC2 instance
+
+  EnableHttps:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Redirect HTTP to HTTPS
+
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+    Description: CloudFront price class (100=NA+EU, 200=NA+EU+Asia, All=All)
+
+  AcmCertificateArn:
+    Type: String
+    Default: ""
+    Description: Optional ACM certificate ARN for custom domain (must be in us-east-1)
+
+  CustomDomainName:
+    Type: String
+    Default: ""
+    Description: Optional custom domain name (e.g., ide.yourdomain.com)
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  UseHttpsRedirect: !Equals [!Ref EnableHttps, "true"]
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, ""]]
+  HasAcmCertificate: !Not [!Equals [!Ref AcmCertificateArn, ""]]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+  # ---------------------------------------------------------------------------
+  # CloudFront Cache Policy for IDE
+  # ---------------------------------------------------------------------------
+  IdeCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        MinTTL: 1
+        Name: !Sub "${ProjectName}-${Environment}-ide-cache-policy"
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: all
+          EnableAcceptEncodingGzip: false
+          EnableAcceptEncodingBrotli: false
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Accept-Charset
+              - Authorization
+              - Origin
+              - Accept
+              - Referer
+              - Host
+              - Accept-Language
+              - Accept-Datetime
+              - Upgrade
+              - Connection
+              - Sec-WebSocket-Key
+              - Sec-WebSocket-Version
+              - Sec-WebSocket-Extensions
+              - Sec-WebSocket-Protocol
+          QueryStringsConfig:
+            QueryStringBehavior: all
+
+  # ---------------------------------------------------------------------------
+  # CloudFront Origin Request Policy for WebSockets
+  # ---------------------------------------------------------------------------
+  IdeOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub "${ProjectName}-${Environment}-ide-origin-request-policy"
+        CookiesConfig:
+          CookieBehavior: all
+        HeadersConfig:
+          HeaderBehavior: allViewerAndWhitelistCloudFront
+          Headers:
+            - CloudFront-Forwarded-Proto
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  # ---------------------------------------------------------------------------
+  # CloudFront Response Headers Policy
+  # ---------------------------------------------------------------------------
+  IdeResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${ProjectName}-${Environment}-ide-response-headers"
+        CorsConfig:
+          AccessControlAllowCredentials: true
+          AccessControlAllowHeaders:
+            Items:
+              - "*"
+          AccessControlAllowMethods:
+            Items:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+              - OPTIONS
+          AccessControlAllowOrigins:
+            Items:
+              - "*"
+          AccessControlMaxAgeSec: 86400
+          OriginOverride: true
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "frame-ancestors 'self' *"
+            Override: true
+          XSSProtection:
+            ModeBlock: true
+            Protection: true
+            Override: true
+
+  # ---------------------------------------------------------------------------
+  # CloudFront Distribution
+  # ---------------------------------------------------------------------------
+  IdeCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        Comment: !Sub "${ProjectName} ${Environment} IDE CloudFront Distribution"
+        PriceClass: !Ref PriceClass
+        Aliases: !If
+          - HasCustomDomain
+          - - !Ref CustomDomainName
+          - !Ref "AWS::NoValue"
+        ViewerCertificate: !If
+          - HasAcmCertificate
+          - AcmCertificateArn: !Ref AcmCertificateArn
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          - CloudFrontDefaultCertificate: true
+        CacheBehaviors:
+          # WebSocket proxy for code-server
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-codeserver"
+            ViewerProtocolPolicy: !If
+              - UseHttpsRedirect
+              - redirect-to-https
+              - allow-all
+            PathPattern: "/proxy/*"
+          # WebSocket connections for code-server
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-codeserver"
+            ViewerProtocolPolicy: !If
+              - UseHttpsRedirect
+              - redirect-to-https
+              - allow-all
+            PathPattern: "/ws/*"
+          # Jupyter Notebook main path
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: false
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            ResponseHeadersPolicyId: !Ref IdeResponseHeadersPolicy
+            TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-jupyter"
+            ViewerProtocolPolicy: redirect-to-https
+            PathPattern: "/jupyter/*"
+          # Jupyter API endpoints
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: false
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            ResponseHeadersPolicyId: !Ref IdeResponseHeadersPolicy
+            TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-jupyter"
+            ViewerProtocolPolicy: redirect-to-https
+            PathPattern: "/api/*"
+          # Jupyter WebSocket for kernel communication
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: false
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-jupyter"
+            ViewerProtocolPolicy: redirect-to-https
+            PathPattern: "/jupyter/api/kernels/*/channels"
+          # Jupyter terminals WebSocket
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: false
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+            TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-jupyter"
+            ViewerProtocolPolicy: redirect-to-https
+            PathPattern: "/jupyter/terminals/websocket/*"
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - PATCH
+            - POST
+            - DELETE
+          CachePolicyId: !Ref IdeCachePolicy
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          TargetOriginId: !Sub "CloudFront-${ProjectName}-${Environment}-codeserver"
+          ViewerProtocolPolicy: !If
+            - UseHttpsRedirect
+            - redirect-to-https
+            - allow-all
+        Origins:
+          # Code-server origin (port 80 via Caddy)
+          - DomainName: !Ref IdeInstancePublicDns
+            Id: !Sub "CloudFront-${ProjectName}-${Environment}-codeserver"
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+          # Jupyter Notebook origin (port 8888)
+          - DomainName: !Ref IdeInstancePublicDns
+            Id: !Sub "CloudFront-${ProjectName}-${Environment}-jupyter"
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 8888
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultRootObject: ""
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-ide-cloudfront"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  CloudFrontDistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref IdeCloudFrontDistribution
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeCloudFrontDistributionId"
+
+  CloudFrontDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt IdeCloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub "${ProjectName}-${Environment}-IdeCloudFrontDomainName"
+
+  IdeUrl:
+    Description: URL to access the code-server IDE
+    Value: !If
+      - HasCustomDomain
+      - !Sub "https://${CustomDomainName}"
+      - !Sub "https://${IdeCloudFrontDistribution.DomainName}"
+
+  JupyterUrl:
+    Description: URL to access Jupyter Notebook
+    Value: !If
+      - HasCustomDomain
+      - !Sub "https://${CustomDomainName}/jupyter"
+      - !Sub "https://${IdeCloudFrontDistribution.DomainName}/jupyter"
+
+  CachePolicyId:
+    Description: Cache Policy ID
+    Value: !Ref IdeCachePolicy
+
+  OriginRequestPolicyId:
+    Description: Origin Request Policy ID
+    Value: !Ref IdeOriginRequestPolicy
+
+  ResponseHeadersPolicyId:
+    Description: Response Headers Policy ID
+    Value: !Ref IdeResponseHeadersPolicy
