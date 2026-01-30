@@ -2,49 +2,47 @@
 
 Production-ready web scraping module for financial data collection.
 
-## Directory Structure
+## Directory Structure (production-ready)
 
 ```
 WebScraping/
-├── src/                    # Source code
-│   ├── __init__.py
-│   ├── WebScraper.py      # Main scraper class
-│   ├── DataframeStore.py  # DataFrame storage utility
-│   ├── YahooFinanceHTMLElements.py  # HTML element selectors
-│   ├── news_collector_example.py    # News collector example
-│   └── news_collector_refactored_example.py  # Refactored news collector
-├── notebooks/              # Jupyter notebooks for experimentation
-│   ├── TestScrapper.ipynb
-│   ├── NewsCollector-Staging.ipynb
-│   ├── StockCollector.ipynb
-│   └── StockCollector-CoinMarketCap.ipynb
-├── docs/                   # Documentation
-│   ├── NEWS_COLLECTOR_ANALYSIS.md
-│   └── REFACTORING_QUICK_REFERENCE.md
-├── data/                   # Generated data files (HTML dumps, etc.)
-│   ├── dom_tree_*.html
-│   └── dom_tree_prettified_*.html
-├── tests/                  # Unit tests (to be added)
-│   └── __init__.py
-└── README.md               # This file
+├── src/
+│   ├── scrapers/           # Core scraping: WebScraper, DataframeStore
+│   │   ├── WebScraper.py
+│   │   └── DataframeStore.py
+│   ├── selectors/          # Centralized Yahoo Finance selectors
+│   │   ├── stock_collector_selectors.py
+│   │   └── YahooFinanceHTMLElements.py
+│   ├── utils/              # DOM utilities (save/validate/repair)
+│   │   ├── HTMLDOMUtils.py
+│   │   └── HTMLDOMUtils_example.py
+│   ├── collectors/         # News/stock collector examples
+│   │   ├── news_collector_example.py
+│   │   └── news_collector_refactored_example.py
+│   ├── WebScraper.py       # Compatibility: re-exports from scrapers
+│   └── DataframeStore.py   # Compatibility: re-exports from scrapers
+├── notebooks/
+├── docs/
+├── data/
+└── tests/
+    └── test_stock_collector_selectors.py
 ```
 
 ## Usage
 
-### Importing the main scraper:
+### From project root (recommended)
 
 ```python
-from src import Scrapper
-
-# Or directly
-from src.WebScraper import Scrapper
+from WebScraping.src.scrapers import Scrapper, StocksScrapper, NewsScrapper, DataFrameStore
+from WebScraping.src.selectors import YahooFinanceStockSelectors, find_element_with_fallbacks
+from WebScraping.src.utils import HTMLDOMUtils, validate_xpath
 ```
 
-### Importing utilities:
+### With `src` on path (notebooks / legacy)
 
 ```python
-from src import DataFrameStore
-from src.DataframeStore import DataFrameStore
+from WebScraper import Scrapper, StocksScrapper
+from DataframeStore import DataFrameStore
 ```
 
 ## Development
