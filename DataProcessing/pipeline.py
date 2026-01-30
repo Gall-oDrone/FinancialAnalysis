@@ -47,6 +47,8 @@ class PipelineStage(Enum):
     TRANSFORM = "transform"
     UPLOAD_TRANSFORMED = "upload_transformed"
     SAVE_DB = "save_db"
+    EXPORT_GENAI = "export_genai"
+    TRANSFORM_STOCKS = "transform_stocks"
 
 
 @dataclass
@@ -306,6 +308,81 @@ class UploadTransformedStageHandler(PipelineStageHandler):
         return data
 
 
+class GenAIExportStageHandler(PipelineStageHandler):
+    """Handles exporting data for GenAI applications (JSONL)."""
+    
+    @property
+    def name(self) -> str:
+        return "Export for GenAI"
+    
+    def execute(self, data: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
+        """Export transformed data to JSONL for GenAI."""
+        if data.empty:
+            logger.warning("No data to export")
+            return data
+        
+        from DataProcessing.genai_export import export_to_s3_jsonl
+        from datetime import datetime
+        
+        if not config.s3_bucket:
+            logger.warning("No S3 bucket configured, skipping GenAI export")
+            return data
+        
+        # Generate timestamp-based path
+        now = datetime.now()
+        date_path = f"year={now.year}/month={now.month:02}/day={now.day:02}"
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        
+        prefix_path = f"genai/news/{date_path}"
+        file_name = f"news_genai_{timestamp}"
+        
+        try:
+            s3_uri = export_to_s3_jsonl(
+                df,
+                bucket_name=config.s3_bucket,
+                prefix_path=prefix_path,
+                file_name=file_name,
+                include_embeddings=getattr(config, 'include_embeddings', False)
+            )
+            logger.info(f"GenAI data exported to {s3_uri}")
+        except Exception as e:
+            logger.error(f"Failed to export GenAI data: {e}")
+            if not config.continue_on_error:
+                raise
+        
+        return data
+
+
+class StockTransformStageHandler(PipelineStageHandler):
+    """Handles stock data transformations."""
+    
+    @property
+    def name(self) -> str:
+        return "Transform Stocks"
+    
+    def execute(self, data: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
+        """Transform stock OHLCV data with indicators."""
+        if data.empty:
+            logger.warning("No stock data to transform")
+            return data
+        
+        from DataProcessing.stock_transformers import StockTransformationPipeline
+        
+        # Initialize stock transformation pipeline
+        transform_pipeline = StockTransformationPipeline(
+            add_returns=True,
+            add_volatility=True,
+            add_indicators=True
+        )
+        
+        # Transform stocks
+        transformed_df = transform_pipeline.transform(data)
+        
+        logger.info(f"Transformed {len(transformed_df)} stock records")
+        
+        return transformed_df
+
+
 class SaveToDBStageHandler(PipelineStageHandler):
     """Handles saving data to PostgreSQL."""
     
@@ -376,6 +453,8 @@ class DataPipeline:
         PipelineStage.TRANSFORM: TransformStageHandler,
         PipelineStage.UPLOAD_TRANSFORMED: UploadTransformedStageHandler,
         PipelineStage.SAVE_DB: SaveToDBStageHandler,
+        PipelineStage.EXPORT_GENAI: 'GenAIExportStageHandler',
+        PipelineStage.TRANSFORM_STOCKS: 'StockTransformStageHandler',
     }
     
     def __init__(self, config: Optional[PipelineConfig] = None):
@@ -386,10 +465,15 @@ class DataPipeline:
             config: Pipeline configuration. If None, uses defaults.
         """
         self.config = config or PipelineConfig()
-        self._handlers = {
-            stage: handler() 
-            for stage, handler in self.STAGE_HANDLERS.items()
-        }
+        self._handlers = {}
+        
+        # Initialize handlers (handle string class names)
+        for stage, handler in self.STAGE_HANDLERS.items():
+            if isinstance(handler, str):
+                # Lazy initialization for new handlers
+                self._handlers[stage] = None
+            else:
+                self._handlers[stage] = handler()
     
     def run(self, initial_data: Optional[pd.DataFrame] = None) -> PipelineResult:
         """
@@ -417,7 +501,17 @@ class DataPipeline:
                     logger.info(f"Skipping {stage.value} - initial data provided")
                     continue
                 
+                # Lazy initialize handler if needed
                 handler = self._handlers.get(stage)
+                if handler is None:
+                    # Initialize on first use
+                    handler_class_name = self.STAGE_HANDLERS[stage]
+                    if handler_class_name == 'GenAIExportStageHandler':
+                        handler = GenAIExportStageHandler()
+                    elif handler_class_name == 'StockTransformStageHandler':
+                        handler = StockTransformStageHandler()
+                    self._handlers[stage] = handler
+                
                 if not handler:
                     logger.warning(f"No handler for stage: {stage.value}")
                     continue

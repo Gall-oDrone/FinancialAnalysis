@@ -7,8 +7,12 @@ A production-ready Python toolkit for financial data collection, processing, and
 - **Web Scraping**: Automated collection of financial news and stock market data
 - **API Integration**: Bitso cryptocurrency exchange API integration
 - **Data Storage**: PostgreSQL and AWS S3 storage solutions
+- **Data Transformation**: Production-ready ETL pipeline with ML/NLP transformations
+  - **News**: Sentiment analysis, intent classification, keyword extraction, ticker extraction
+  - **Stocks**: Returns, volatility, technical indicators (SMA, RSI, MACD, etc.)
+  - **GenAI Export**: JSONL format with optional embeddings for RAG applications
 - **Financial Analysis**: Advanced financial modeling and analysis libraries
-- **Data Processing**: Tools for data ingestion and transformation
+- **CLI Tools**: Command-line interface for ETL operations
 
 ## Project Structure
 
@@ -137,6 +141,46 @@ s3.upload_dataframe_to_csv(
     prefix_path="stocks"
 )
 ```
+
+### Data Transformation
+
+```python
+# News transformation with NLP
+from DataProcessing.text_transformers import TextTransformationPipeline
+
+pipeline = TextTransformationPipeline(
+    sentiment_backend="vader",
+    extract_tickers=True
+)
+transformed_news = pipeline.transform(news_df)
+
+# Stock transformation with technical indicators
+from DataProcessing.stock_transformers import StockTransformationPipeline
+
+stock_pipeline = StockTransformationPipeline()
+transformed_stocks = stock_pipeline.transform(stocks_df)
+
+# Export for GenAI/RAG
+from DataProcessing.genai_export import export_to_jsonl
+
+export_to_jsonl(transformed_news, "output/news.jsonl")
+```
+
+### ETL CLI
+
+```bash
+# Ingest and transform stocks
+python -m DataProcessing.etl_cli ingest-stocks --since 2026-01-01 --until 2026-01-28
+python -m DataProcessing.etl_cli transform-stocks --since 2026-01-01 --output transformed.csv
+
+# Transform news with sentiment analysis
+python -m DataProcessing.etl_cli transform-news --date 2026-01-27 --sentiment vader
+
+# Export for GenAI with embeddings
+python -m DataProcessing.etl_cli export-genai --date 2026-01-27 --embeddings
+```
+
+For detailed transformation documentation, see [DataProcessing/README.md](DataProcessing/README.md).
 
 ## Development
 

@@ -106,3 +106,4 @@ unavailable_books.csv
 *.pem
 *.key
 !*.pub
+venv_test/

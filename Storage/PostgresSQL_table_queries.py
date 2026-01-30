@@ -60,6 +60,9 @@ FINANCIAL_NEWS_TRANSFORMED_TABLE_QUERY = """
                 cleaned_text TEXT,
                 word_count INTEGER,
                 
+                -- Ticker extraction
+                tickers JSONB,
+                
                 -- Sentiment analysis fields
                 sentiment_label VARCHAR(50),
                 sentiment_score FLOAT,
@@ -88,4 +91,62 @@ FINANCIAL_NEWS_TRANSFORMED_INDEXES = """
             CREATE INDEX IF NOT EXISTS idx_transformed_intent ON financial_news_transformed(primary_intent);
             CREATE INDEX IF NOT EXISTS idx_transformed_topic ON financial_news_transformed(topic);
             CREATE INDEX IF NOT EXISTS idx_transformed_datetime ON financial_news_transformed(datetime);
+            CREATE INDEX IF NOT EXISTS idx_transformed_tickers ON financial_news_transformed USING GIN(tickers);
+        """
+
+# Table for processed/transformed stock data
+HISTORICAL_PROCESSED_TABLE_NAME = "historical_processed"
+
+HISTORICAL_PROCESSED_TABLE_QUERY = """
+            CREATE TABLE IF NOT EXISTS historical_processed (
+                -- Original fields
+                reference VARCHAR(255),
+                book VARCHAR(255),
+                date DATE,
+                open FLOAT,
+                high FLOAT,
+                low FLOAT,
+                close FLOAT,
+                adj_close FLOAT,
+                volume BIGINT,
+                
+                -- Returns
+                simple_return FLOAT,
+                log_return FLOAT,
+                
+                -- Volatility metrics
+                volatility_20d FLOAT,
+                volatility_60d FLOAT,
+                volatility_parkinson FLOAT,
+                volatility_gk FLOAT,
+                
+                -- Moving averages
+                sma_20 FLOAT,
+                sma_50 FLOAT,
+                sma_200 FLOAT,
+                ema_12 FLOAT,
+                ema_26 FLOAT,
+                
+                -- Technical indicators
+                rsi_14 FLOAT,
+                macd FLOAT,
+                macd_signal FLOAT,
+                macd_histogram FLOAT,
+                bb_upper FLOAT,
+                bb_middle FLOAT,
+                bb_lower FLOAT,
+                
+                -- Metadata
+                processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                
+                -- Constraints
+                PRIMARY KEY (book, date)
+            )
+        """
+
+# Indexes for processed stocks
+HISTORICAL_PROCESSED_INDEXES = """
+            CREATE INDEX IF NOT EXISTS idx_processed_book ON historical_processed(book);
+            CREATE INDEX IF NOT EXISTS idx_processed_date ON historical_processed(date);
+            CREATE INDEX IF NOT EXISTS idx_processed_book_date ON historical_processed(book, date);
         """

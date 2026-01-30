@@ -119,6 +119,7 @@ class TransformedArticle:
     sentiment: Optional[SentimentResult] = None
     intent: Optional[IntentResult] = None
     keywords: Optional[KeywordResult] = None
+    tickers: List[str] = field(default_factory=list)  # Extracted ticker symbols
     
     # Processed text fields
     cleaned_text: Optional[str] = None
@@ -136,6 +137,7 @@ class TransformedArticle:
             "datetime": self.datetime,
             "cleaned_text": self.cleaned_text,
             "word_count": self.word_count,
+            "tickers": self.tickers,
         }
         
         if self.sentiment:
@@ -739,8 +741,9 @@ class TextTransformationPipeline:
     """
     Complete text transformation pipeline for ML/AI preparation.
     
-    Combines sentiment analysis, intent extraction, and keyword extraction
-    into a single pipeline that processes articles for ML consumption.
+    Combines sentiment analysis, intent extraction, keyword extraction,
+    and ticker extraction into a single pipeline that processes articles
+    for ML consumption.
     """
     
     def __init__(
@@ -748,7 +751,8 @@ class TextTransformationPipeline:
         sentiment_backend: str = "vader",
         use_transformer_intents: bool = False,
         keyword_method: str = "tfidf",
-        keyword_top_n: int = 10
+        keyword_top_n: int = 10,
+        extract_tickers: bool = True
     ):
         """
         Initialize the transformation pipeline.
@@ -758,14 +762,20 @@ class TextTransformationPipeline:
             use_transformer_intents: Use transformers for intent classification
             keyword_method: 'tfidf', 'spacy', or 'rake'
             keyword_top_n: Number of top keywords to extract
+            extract_tickers: Whether to extract ticker symbols
         """
         self.preprocessor = TextPreprocessor()
+        self.extract_tickers = extract_tickers
         
         logger.info("Initializing text transformation pipeline...")
         
         self.sentiment_analyzer = SentimentAnalyzer(backend=sentiment_backend)
         self.intent_extractor = IntentExtractor(use_transformers=use_transformer_intents)
         self.keyword_extractor = KeywordExtractor(method=keyword_method, top_n=keyword_top_n)
+        
+        if self.extract_tickers:
+            from DataProcessing.ticker_extractor import TickerExtractor
+            self.ticker_extractor = TickerExtractor()
         
         logger.info("Text transformation pipeline initialized")
     
@@ -803,6 +813,10 @@ class TextTransformationPipeline:
             transformed.sentiment = self.sentiment_analyzer.transform(cleaned_text)
             transformed.intent = self.intent_extractor.transform(cleaned_text)
             transformed.keywords = self.keyword_extractor.transform(cleaned_text)
+            
+            # Extract tickers from headline + summary + content
+            if self.extract_tickers:
+                transformed.tickers = self.ticker_extractor.extract_from_article(article_dict)
         
         return transformed
     
