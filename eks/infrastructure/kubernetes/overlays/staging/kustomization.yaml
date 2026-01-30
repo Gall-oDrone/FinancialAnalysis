@@ -1,0 +1,72 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: financial-analysis-staging
+
+namespace: financial-analysis
+
+resources:
+  - ../../base
+
+commonLabels:
+  environment: staging
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: "staging"
+      - op: replace
+        path: /data/DEBUG
+        value: "False"
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: "INFO"
+      - op: replace
+        path: /data/SCRAPING_DEBUG
+        value: "False"
+    target:
+      kind: ConfigMap
+      name: financial-analysis-config
+
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: financial-scraper
+
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "250m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "2Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+    target:
+      kind: Deployment
+      name: financial-scraper
+
+  - patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+    target:
+      kind: HorizontalPodAutoscaler
+      name: financial-scraper-hpa
+
+images:
+  - name: ${ECR_REPOSITORY_URL}
+    newTag: staging
+
