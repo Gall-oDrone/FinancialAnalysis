@@ -79,6 +79,13 @@ FINANCIAL_NEWS_TRANSFORMED_TABLE_QUERY = """
                 keywords JSONB,
                 entities JSONB,
                 
+                -- Agentic (LLM) enrichment (optional)
+                llm_summary TEXT,
+                llm_themes JSONB,
+                llm_entities JSONB,
+                llm_error TEXT,
+                agentic_enabled BOOLEAN NOT NULL DEFAULT false,
+                
                 -- Metadata
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -92,6 +99,7 @@ FINANCIAL_NEWS_TRANSFORMED_INDEXES = """
             CREATE INDEX IF NOT EXISTS idx_transformed_topic ON financial_news_transformed(topic);
             CREATE INDEX IF NOT EXISTS idx_transformed_datetime ON financial_news_transformed(datetime);
             CREATE INDEX IF NOT EXISTS idx_transformed_tickers ON financial_news_transformed USING GIN(tickers);
+            CREATE INDEX IF NOT EXISTS idx_transformed_agentic ON financial_news_transformed(agentic_enabled);
         """
 
 # Table for processed/transformed stock data

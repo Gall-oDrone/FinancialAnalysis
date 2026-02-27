@@ -9,6 +9,7 @@ A production-ready Python toolkit for financial data collection, processing, and
 - **Data Storage**: PostgreSQL and AWS S3 storage solutions
 - **Data Transformation**: Production-ready ETL pipeline with ML/NLP transformations
   - **News**: Sentiment analysis, intent classification, keyword extraction, ticker extraction
+  - **Agentic AI (optional)**: LLM-based enrichment for news (one-line summary, themes) via OpenAI/Claude; opt-in via `enable_agentic_transform`. See [docs/AGENTIC_AI_AND_BRANCHING.md](docs/AGENTIC_AI_AND_BRANCHING.md).
   - **Stocks**: Returns, volatility, technical indicators (SMA, RSI, MACD, etc.)
   - **GenAI Export**: JSONL format with optional embeddings for RAG applications
 - **Financial Analysis**: Advanced financial modeling and analysis libraries
@@ -21,6 +22,8 @@ financial_analysis/
 ├── src/                    # Application code (canonical)
 │   ├── config/             # Configuration (settings)
 │   ├── core/               # Shared utilities (logging)
+│   ├── agents/             # LLM clients (OpenAI, Claude), agentic transform, MCP placeholder
+│   ├── rag/                # RAG (chunking, in-memory vector store)
 │   ├── storage/            # PostgreSQL and S3 (postgres/, cloud/)
 │   ├── ingestion/          # Data ingestion
 │   │   └── news/           # News scrapers, collectors, selectors
@@ -188,11 +191,17 @@ python -m DataProcessing.etl_cli transform-stocks --since 2026-01-01 --output tr
 # Transform news with sentiment analysis
 python -m DataProcessing.etl_cli transform-news --date 2026-01-27 --sentiment vader
 
+# News ETL with optional agentic (LLM) enrichment: set enable_agentic_transform=True
+# or LLM_ENABLE_AGENTIC_TRANSFORM=true and OPENAI_API_KEY or ANTHROPIC_API_KEY.
+# Postgres: financial_news_transformed has llm_summary, llm_themes, agentic_enabled.
+# S3: paths include agentic=true/ or agentic=false/ for comparison.
+
 # Export for GenAI with embeddings
 python -m DataProcessing.etl_cli export-genai --date 2026-01-27 --embeddings
 ```
 
-For detailed transformation documentation, see [DataProcessing/README.md](DataProcessing/README.md).
+For detailed transformation documentation, see [DataProcessing/README.md](DataProcessing/README.md).  
+For agentic AI design and branching, see [docs/AGENTIC_AI_AND_BRANCHING.md](docs/AGENTIC_AI_AND_BRANCHING.md).
 
 ## Development
 

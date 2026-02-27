@@ -290,19 +290,21 @@ class UploadTransformedStageHandler(PipelineStageHandler):
         
         aws = CloudStorageProvider.AWS()
         
-        # Generate timestamp-based path
+        # Generate timestamp-based path (include agentic=true|false for production comparison)
         now = datetime.now()
         date_path = f"year={now.year}/month={now.month:02}/day={now.day:02}"
         timestamp = now.strftime("%Y%m%d_%H%M%S")
+        agentic_enabled = getattr(config, "enable_agentic_transform", False)
+        agentic_seg = f"agentic={'true' if agentic_enabled else 'false'}/"
         
         # Upload transformed data as CSV
-        prefix_path = f"{config.s3_transformed_prefix}/{date_path}"
+        prefix_path = f"{config.s3_transformed_prefix}/{agentic_seg}{date_path}"
         file_name = f"news_transformed_{timestamp}"
         
         try:
             # Convert complex columns to JSON strings for CSV storage
             df_export = data.copy()
-            for col in ['keywords', 'entities', 'secondary_intents']:
+            for col in ['keywords', 'entities', 'secondary_intents', 'llm_themes', 'llm_entities']:
                 if col in df_export.columns:
                     df_export[col] = df_export[col].apply(
                         lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
@@ -443,17 +445,21 @@ class SaveToDBStageHandler(PipelineStageHandler):
             return data
         
         from storage.postgres.pgConn import PgConn
+        from pipelines.etl_transform import _ensure_news_transformed_table
         
         db_conn = PgConn()
+        _ensure_news_transformed_table(db_conn)
         db_conn.set_table(config.db_table_name)
         
-        # Define columns for the transformed table
+        # Define columns for the transformed table (includes agentic/LLM columns when enabled)
+        agentic_enabled = getattr(config, "enable_agentic_transform", False)
         header = [
-            "id", "source", "headline", "href", "summary", "content", 
+            "id", "source", "headline", "href", "summary", "content",
             "datetime", "topic", "scraped_at", "cleaned_text", "word_count",
-            "sentiment_label", "sentiment_score", "positive_score", 
-            "negative_score", "neutral_score", "primary_intent", 
-            "intent_confidence", "keywords"
+            "tickers", "sentiment_label", "sentiment_score", "positive_score",
+            "negative_score", "neutral_score", "primary_intent",
+            "intent_confidence", "secondary_intents", "keywords", "entities",
+            "llm_summary", "llm_themes", "llm_entities", "llm_error", "agentic_enabled",
         ]
         
         saved_count = 0
@@ -463,6 +469,9 @@ class SaveToDBStageHandler(PipelineStageHandler):
                     col: (json.dumps(row[col]) if isinstance(row.get(col), (list, dict)) else row.get(col))
                     for col in header if col in row.index
                 }
+                row_dict["agentic_enabled"] = agentic_enabled
+                # Only include columns we have (table has all; omit missing)
+                row_dict = {k: v for k, v in row_dict.items() if k in header}
                 db_conn.save_to_postgres(row_dict, list(row_dict.keys()))
                 saved_count += 1
             except Exception as e:

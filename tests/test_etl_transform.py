@@ -18,6 +18,7 @@ from pipelines.etl_transform import (
     build_s3_key_news_batch,
     build_s3_key_stocks,
     _serialize_row_for_news_db,
+    save_transformed_news_to_postgres,
     upload_dataframe_to_s3_key,
 )
 
@@ -38,6 +39,14 @@ class TestS3PathBuilders:
         assert "format=csv" in key
         assert key.endswith("316878550224202608217373602922154345297.csv")
 
+    def test_build_s3_key_news_per_article_agentic(self):
+        dt = datetime(2026, 2, 26, 18, 31, 22)
+        key_false = build_s3_key_news_per_article("id1", dt, agentic=False)
+        key_true = build_s3_key_news_per_article("id1", dt, agentic=True)
+        assert "agentic=false" in key_false
+        assert "agentic=true" in key_true
+        assert "year=2026" in key_false and "year=2026" in key_true
+
     def test_build_s3_key_news_batch_run(self):
         dt = datetime(2026, 2, 26, 18, 31, 22)
         key = build_s3_key_news_batch("run", dt)
@@ -45,6 +54,14 @@ class TestS3PathBuilders:
         assert "batch=run" in key
         assert "format=csv" in key
         assert "20260226_183122" in key
+
+    def test_build_s3_key_news_batch_agentic(self):
+        dt = datetime(2026, 2, 26, 18, 31, 22)
+        key_false = build_s3_key_news_batch("run", dt, agentic=False)
+        key_true = build_s3_key_news_batch("run", dt, agentic=True)
+        assert "agentic=false" in key_false
+        assert "agentic=true" in key_true
+        assert "batch=run" in key_false and "batch=run" in key_true
 
     def test_build_s3_key_news_batch_week_month_year(self):
         dt = datetime(2026, 2, 26)
@@ -98,6 +115,44 @@ class TestSerializeRowForNewsDb:
         row = {"id": "1", "tickers": None}
         out = _serialize_row_for_news_db(row)
         assert out["tickers"] is None
+
+    def test_serialize_llm_themes(self):
+        row = {"id": "1", "llm_themes": ["earnings", "regulation", "crypto"]}
+        out = _serialize_row_for_news_db(row)
+        assert isinstance(out["llm_themes"], str) and "earnings" in out["llm_themes"]
+
+
+class TestSaveTransformedNewsToPostgres:
+    """Test save_transformed_news_to_postgres with agentic_enabled (mocked DB)."""
+
+    @pytest.mark.skipif(not PSYCOPG2_AVAILABLE, reason="psycopg2 not available (imports storage)")
+    def test_save_includes_agentic_enabled_false(self):
+        mock_conn = MagicMock()
+        df = pd.DataFrame([
+            {"id": "art1", "headline": "H", "content": "C", "sentiment_label": "neutral"},
+        ])
+        n = save_transformed_news_to_postgres(mock_conn, df, agentic_enabled=False)
+        assert n == 1
+        call_args = mock_conn.save_to_postgres.call_args
+        row_dict = call_args[0][0]
+        assert row_dict.get("agentic_enabled") is False
+        assert "llm_summary" not in row_dict or row_dict.get("llm_summary") is None
+
+    @pytest.mark.skipif(not PSYCOPG2_AVAILABLE, reason="psycopg2 not available (imports storage)")
+    def test_save_includes_agentic_enabled_true(self):
+        mock_conn = MagicMock()
+        df = pd.DataFrame([
+            {
+                "id": "art2", "headline": "H", "content": "C", "sentiment_label": "neutral",
+                "llm_summary": "One-line summary.", "llm_themes": ["crypto", "regulation"],
+            },
+        ])
+        n = save_transformed_news_to_postgres(mock_conn, df, agentic_enabled=True)
+        assert n == 1
+        call_args = mock_conn.save_to_postgres.call_args
+        row_dict = call_args[0][0]
+        assert row_dict.get("agentic_enabled") is True
+        assert row_dict.get("llm_summary") == "One-line summary."
 
 
 class TestUploadDataframeToS3Key:

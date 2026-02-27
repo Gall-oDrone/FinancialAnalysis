@@ -5,8 +5,8 @@ ETL Transform Pipeline: Transform data from Postgres, save back to Postgres, pub
 - Stocks: per-book transform with warmup window; S3 upload per book/day.
 
 S3 path conventions:
-  News per-article: s3://{bucket}/news/crypto/year=YYYY/month=MM/day=DD/hour=HH/minute=mm/second=ss/format=csv/{id}.csv
-  News batch:       s3://{bucket}/news/transformed/crypto/year=YYYY/month=MM/... (run/week/month/year)
+  News per-article: s3://{bucket}/news/crypto/[agentic=true|false/]year=.../format=csv/{id}.csv
+  News batch:       s3://{bucket}/news/transformed/crypto/[agentic=true|false/]batch=run|year=... (run/week/month/year)
   Stocks:           s3://{bucket}/stocks/crypto/book={book}/year=YYYY/month=MM/day=DD/format=csv/YYYYMMDD-{book}.csv
 """
 
@@ -33,10 +33,16 @@ def build_s3_key_news_per_article(
     article_id: str,
     dt: datetime,
     prefix: str = NEWS_PREFIX,
+    agentic: Optional[bool] = None,
 ) -> str:
-    """Build S3 key for a single transformed news article CSV."""
+    """Build S3 key for a single transformed news article CSV.
+    If agentic is True/False, inserts agentic=true/ or agentic=false/ in the path.
+    """
+    agentic_seg = ""
+    if agentic is not None:
+        agentic_seg = f"agentic={'true' if agentic else 'false'}/"
     return (
-        f"{prefix}/year={dt.year}/month={dt.month:02d}/day={dt.day:02d}"
+        f"{prefix}/{agentic_seg}year={dt.year}/month={dt.month:02d}/day={dt.day:02d}"
         f"/hour={dt.hour:02d}/minute={dt.minute:02d}/second={dt.second:02d}"
         f"/format=csv/{article_id}.csv"
     )
@@ -47,18 +53,24 @@ def build_s3_key_news_batch(
     dt: datetime,
     suffix: str = "news_transformed",
     prefix: str = NEWS_TRANSFORMED_PREFIX,
+    agentic: Optional[bool] = None,
 ) -> str:
-    """Build S3 key for a batch transformed news CSV."""
+    """Build S3 key for a batch transformed news CSV.
+    If agentic is True/False, inserts agentic=true/ or agentic=false/ in the path.
+    """
+    agentic_seg = ""
+    if agentic is not None:
+        agentic_seg = f"agentic={'true' if agentic else 'false'}/"
     if batch_type == "run":
         ts = dt.strftime("%Y%m%d_%H%M%S")
-        return f"{prefix}/batch=run/format=csv/{suffix}_{ts}.csv"
+        return f"{prefix}/{agentic_seg}batch=run/format=csv/{suffix}_{ts}.csv"
     if batch_type == "week":
         iso = dt.isocalendar()
-        return f"{prefix}/year={dt.year}/week={iso[1]:02d}/format=csv/{suffix}_y{dt.year}_w{iso[1]:02d}.csv"
+        return f"{prefix}/{agentic_seg}year={dt.year}/week={iso[1]:02d}/format=csv/{suffix}_y{dt.year}_w{iso[1]:02d}.csv"
     if batch_type == "month":
-        return f"{prefix}/year={dt.year}/month={dt.month:02d}/format=csv/{suffix}_y{dt.year}_m{dt.month:02d}.csv"
+        return f"{prefix}/{agentic_seg}year={dt.year}/month={dt.month:02d}/format=csv/{suffix}_y{dt.year}_m{dt.month:02d}.csv"
     if batch_type == "year":
-        return f"{prefix}/year={dt.year}/format=csv/{suffix}_y{dt.year}.csv"
+        return f"{prefix}/{agentic_seg}year={dt.year}/format=csv/{suffix}_y{dt.year}.csv"
     raise ValueError(f"batch_type must be one of run, week, month, year; got {batch_type}")
 
 
@@ -79,7 +91,7 @@ def build_s3_key_stocks(
 def _serialize_row_for_news_db(row: Dict[str, Any]) -> Dict[str, Any]:
     """Convert list/dict fields to JSON strings for Postgres JSONB."""
     out = dict(row)
-    for key in ("tickers", "secondary_intents", "keywords", "entities"):
+    for key in ("tickers", "secondary_intents", "keywords", "entities", "llm_themes", "llm_entities"):
         if key in out and out[key] is not None:
             v = out[key]
             if isinstance(v, (list, dict)):
@@ -125,10 +137,12 @@ def save_transformed_news_to_postgres(
     pg_conn,
     transformed_df: pd.DataFrame,
     table_name: Optional[str] = None,
+    agentic_enabled: bool = False,
 ) -> int:
     """
     Save transformed news DataFrame to Postgres (financial_news_transformed).
     Maps pipeline output columns to DB columns and serializes JSONB fields.
+    When agentic_enabled is True, llm_* columns are written; otherwise they are NULL.
     Returns number of rows saved.
     """
     from storage.postgres import PostgresSQL_table_queries as q
@@ -141,6 +155,7 @@ def save_transformed_news_to_postgres(
         "sentiment_label", "sentiment_score", "positive_score", "negative_score", "neutral_score",
         "primary_intent", "intent_confidence", "secondary_intents",
         "keywords", "entities",
+        "llm_summary", "llm_themes", "llm_entities", "llm_error", "agentic_enabled",
     ]
     saved = 0
     for _, row in transformed_df.iterrows():
@@ -153,8 +168,12 @@ def save_transformed_news_to_postgres(
                 if pd.isna(val):
                     val = None
                 row_dict[col] = val
+            elif col == "agentic_enabled":
+                row_dict[col] = agentic_enabled
         if not row_dict.get("id"):
             continue
+        # Ensure agentic_enabled is set from param when not in row
+        row_dict["agentic_enabled"] = agentic_enabled
         row_dict = _serialize_row_for_news_db(row_dict)
         try:
             pg_conn.save_to_postgres(row_dict, list(row_dict.keys()))
@@ -258,12 +277,14 @@ def run_news_etl(
     upload_s3_batch: Optional[List[str]] = None,  # e.g. ["run", "week", "month", "year"]
     sentiment_backend: str = "vader",
     extract_tickers: bool = True,
+    agentic_enabled: bool = False,
     pg_conn=None,
 ) -> pd.DataFrame:
     """
     Ingest news from Postgres, transform with TextTransformationPipeline,
     optionally save to financial_news_transformed, then upload to S3.
 
+    When agentic_enabled is True, llm_* columns are persisted and S3 paths include agentic=true/.
     S3: per-article keys and/or batch keys (run, week, month, year) under news bucket.
     """
     from config.settings import get_settings
@@ -293,7 +314,7 @@ def run_news_etl(
     if save_to_postgres:
         conn = pg_conn or PgConn(q.FINANCIAL_NEWS_TABLE_NAME)
         _ensure_news_transformed_table(conn)
-        n = save_transformed_news_to_postgres(conn, transformed)
+        n = save_transformed_news_to_postgres(conn, transformed, agentic_enabled=agentic_enabled)
         logger.info("Saved %d rows to %s", n, q.FINANCIAL_NEWS_TRANSFORMED_TABLE_NAME)
         if pg_conn is None:
             conn.close_connection()
@@ -308,14 +329,14 @@ def run_news_etl(
                     dt = pd.to_datetime(dt_str) if dt_str else datetime.utcnow()
                 except Exception:
                     dt = datetime.utcnow()
-                key = build_s3_key_news_per_article(aid, dt)
+                key = build_s3_key_news_per_article(aid, dt, agentic=agentic_enabled)
                 one = pd.DataFrame([row])
                 upload_dataframe_to_s3_key(aws.s3_client, bucket, key, one)
             logger.info("Uploaded %d per-article CSVs to s3://%s/", len(transformed), bucket)
         if upload_s3_batch:
             now = datetime.utcnow()
             for batch_type in upload_s3_batch:
-                key = build_s3_key_news_batch(batch_type, now)
+                key = build_s3_key_news_batch(batch_type, now, agentic=agentic_enabled)
                 upload_dataframe_to_s3_key(aws.s3_client, bucket, key, transformed)
                 logger.info("Uploaded batch %s to s3://%s/%s", batch_type, bucket, key)
 
