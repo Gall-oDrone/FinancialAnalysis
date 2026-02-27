@@ -8,7 +8,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from DataProcessing.genai_export import (
+from export.genai_export import (
     GenAIArticle,
     GenAITextPreparator,
     export_to_jsonl,
@@ -246,7 +246,7 @@ class TestMockS3Upload:
     
     def test_s3_upload_mock(self, sample_transformed_news_df, mock_s3):
         """Test S3 upload with mocked client."""
-        from DataProcessing.genai_export import export_to_s3_jsonl
+        from export.genai_export import export_to_s3_jsonl
         from unittest.mock import patch
         
         with patch('boto3.client', return_value=mock_s3):

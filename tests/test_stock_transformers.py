@@ -6,7 +6,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from DataProcessing.stock_transformers import (
+from transform.stocks.stock_transformers import (
     ReturnsCalculator,
     VolatilityCalculator,
     TechnicalIndicators,

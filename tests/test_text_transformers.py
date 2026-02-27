@@ -5,7 +5,7 @@ Tests for text transformation module.
 import pytest
 import pandas as pd
 
-from DataProcessing.text_transformers import (
+from transform.news.text_transformers import (
     SentimentAnalyzer,
     SentimentLabel,
     IntentExtractor,
@@ -325,7 +325,7 @@ class TestTransformedArticle:
     
     def test_to_dict(self):
         """Test conversion to dictionary."""
-        from DataProcessing.text_transformers import SentimentResult, IntentResult, KeywordResult
+        from transform.news.text_transformers import SentimentResult, IntentResult, KeywordResult
         
         article = TransformedArticle(
             id=1,
@@ -351,7 +351,7 @@ class TestTransformedArticle:
     
     def test_to_ml_features(self):
         """Test ML feature extraction."""
-        from DataProcessing.text_transformers import SentimentResult, IntentResult
+        from transform.news.text_transformers import SentimentResult, IntentResult
         
         article = TransformedArticle(
             id=1,

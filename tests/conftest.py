@@ -26,11 +26,14 @@ import numpy as np
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
-# Add project root to path for imports
+# Add src to path for imports (production layout)
 import sys
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent
+src_path = project_root / "src"
+if src_path.exists():
+    sys.path.insert(0, str(src_path))
 sys.path.insert(0, str(project_root))
 
 
@@ -54,7 +57,7 @@ def mock_settings():
 @pytest.fixture
 def mock_logger():
     """Mock logger for testing."""
-    with patch("utils.logging.get_logger") as mock:
+    with patch("core.logging.get_logger") as mock:
         mock_logger = Mock()
         mock.return_value = mock_logger
         yield mock_logger
@@ -172,7 +175,7 @@ def mock_s3():
 @pytest.fixture
 def mock_db_connection():
     """Mock database connection for testing."""
-    with patch('Storage.pgConn.PgConn') as mock:
+    with patch('storage.postgres.pgConn.PgConn') as mock:
         mock_conn = Mock()
         mock_conn.get_stocks_prices.return_value = pd.DataFrame()
         mock_conn.get_financial_news.return_value = pd.DataFrame()

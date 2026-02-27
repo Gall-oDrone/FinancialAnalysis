@@ -14,20 +14,32 @@ A production-ready Python toolkit for financial data collection, processing, and
 - **Financial Analysis**: Advanced financial modeling and analysis libraries
 - **CLI Tools**: Command-line interface for ETL operations
 
-## Project Structure
+## Project Structure (production layout)
 
 ```
 financial_analysis/
-├── BitsoApi/           # Bitso cryptocurrency exchange API integration
-├── DataProcessing/     # Data ingestion and transformation modules
-├── FinancialAnalysis/  # Financial modeling and analysis libraries
-├── Storage/            # Database and cloud storage modules
-├── WebScraping/        # Web scraping utilities for financial data
-├── tests/              # Unit and integration tests
-├── config/             # Configuration files
-├── logs/               # Application logs
-├── pyproject.toml      # Project configuration and dependencies
-└── README.md           # This file
+├── src/                    # Application code (canonical)
+│   ├── config/             # Configuration (settings)
+│   ├── core/               # Shared utilities (logging)
+│   ├── storage/            # PostgreSQL and S3 (postgres/, cloud/)
+│   ├── ingestion/          # Data ingestion
+│   │   └── news/           # News scrapers, collectors, selectors
+│   ├── transform/          # ETL transforms
+│   │   ├── news/           # Text transformers, ticker extraction
+│   │   └── stocks/         # Stock transformers (returns, indicators)
+│   ├── export/             # GenAI/JSONL export
+│   └── pipelines/         # Pipeline orchestration and ETL CLI
+├── notebooks/              # All notebooks
+│   ├── ingestion/          # Data ingestion (text, stocks)
+│   ├── scraping/           # News and stock collectors
+│   └── analysis/           # Financial analysis
+├── tests/                  # Unit and integration tests
+├── BitsoApi/               # Bitso API integration (standalone)
+├── FinancialAnalysis/     # Financial modeling libraries (standalone)
+├── scripts/                # Operational scripts
+├── docs/                   # Documentation
+├── pyproject.toml
+└── README.md
 ```
 
 ## Installation

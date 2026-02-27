@@ -5,7 +5,7 @@ Tests for ticker extraction module.
 import pytest
 import pandas as pd
 
-from DataProcessing.ticker_extractor import (
+from transform.news.ticker_extractor import (
     TickerExtractor,
     TickerExtractionResult,
     extract_tickers_from_dataframe,

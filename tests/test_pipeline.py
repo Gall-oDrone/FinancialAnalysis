@@ -6,7 +6,7 @@ import pytest
 import pandas as pd
 from unittest.mock import Mock, patch, MagicMock
 
-from DataProcessing.pipeline import (
+from pipelines.pipeline import (
     DataPipeline,
     PipelineConfig,
     PipelineStage,

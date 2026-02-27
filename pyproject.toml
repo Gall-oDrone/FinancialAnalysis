@@ -66,9 +66,12 @@ dev = [
 [project.scripts]
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["WebScraping*", "Storage*", "BitsoApi*", "FinancialAnalysis*", "DataProcessing*", "config*", "utils*"]
+where = ["src"]
+include = ["config*", "core*", "storage*", "ingestion*", "transform*", "export*", "pipelines*"]
 exclude = ["tests*", "*.tests", "*.tests.*", "tests.*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
 
 [tool.black]
 line-length = 100
@@ -92,14 +95,14 @@ extend-exclude = '''
 [tool.isort]
 profile = "black"
 line_length = 100
-known_first_party = ["WebScraping", "Storage", "BitsoApi", "FinancialAnalysis", "DataProcessing", "config", "utils"]
+known_first_party = ["config", "core", "storage", "ingestion", "transform", "export", "pipelines"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=. --cov-report=html --cov-report=term-missing"
+addopts = "-v"
 filterwarnings = [
     "error",
     "ignore::UserWarning",
