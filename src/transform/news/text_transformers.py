@@ -7,7 +7,7 @@ This module provides text processing capabilities including:
 - Keyword Extraction (TF-IDF, RAKE, or spaCy-based)
 
 Usage:
-    from DataProcessing.text_transformers import TextTransformationPipeline
+    from transform.news.text_transformers import TextTransformationPipeline
     
     pipeline = TextTransformationPipeline()
     results = pipeline.transform(articles_dataframe)

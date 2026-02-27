@@ -7,7 +7,7 @@ Export transformed data in formats suitable for GenAI applications:
 - Structured text with metadata
 
 Usage:
-    from DataProcessing.genai_export import export_to_jsonl, generate_embeddings
+    from export.genai_export import export_to_jsonl, generate_embeddings
     
     # Export to JSONL
     export_to_jsonl(transformed_df, "output/news.jsonl")

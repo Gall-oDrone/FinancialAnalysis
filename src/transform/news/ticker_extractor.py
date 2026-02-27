@@ -8,7 +8,7 @@ Handles various formats:
 - Common names: bitcoin → BTC-USD, ethereum → ETH-USD
 
 Usage:
-    from DataProcessing.ticker_extractor import TickerExtractor
+    from transform.news.ticker_extractor import TickerExtractor
     
     extractor = TickerExtractor()
     tickers = extractor.extract("Bitcoin (CRYPTO: BTC) surged past $100,000...")

@@ -232,7 +232,7 @@ financial_analysis/
 ├── .github/workflows/      # CI/CD pipeline
 ├── BitsoApi/               # Bitso API integration
 ├── config/                 # Configuration management ✨ NEW
-├── DataProcessing/         # Data processing
+├── src/                  # Production layout (pipelines, transform, export)
 ├── FinancialAnalysis/      # Financial analysis libraries
 ├── Storage/                # Database and cloud storage
 ├── tests/                  # Test suite ✨ NEW

@@ -159,9 +159,11 @@ s3.upload_dataframe_to_csv(
 
 ### Data Transformation
 
+Use the production package layout (`src/`). Run from repo root with `PYTHONPATH=src` or after `pip install -e .`:
+
 ```python
 # News transformation with NLP
-from DataProcessing.text_transformers import TextTransformationPipeline
+from transform.news.text_transformers import TextTransformationPipeline
 
 pipeline = TextTransformationPipeline(
     sentiment_backend="vader",
@@ -170,26 +172,28 @@ pipeline = TextTransformationPipeline(
 transformed_news = pipeline.transform(news_df)
 
 # Stock transformation with technical indicators
-from DataProcessing.stock_transformers import StockTransformationPipeline
+from transform.stocks.stock_transformers import StockTransformationPipeline
 
 stock_pipeline = StockTransformationPipeline()
 transformed_stocks = stock_pipeline.transform(stocks_df)
 
 # Export for GenAI/RAG
-from DataProcessing.genai_export import export_to_jsonl
+from export.genai_export import export_to_jsonl
 
 export_to_jsonl(transformed_news, "output/news.jsonl")
 ```
 
 ### ETL CLI
 
+From repo root with `PYTHONPATH=src` or after `pip install -e .`:
+
 ```bash
 # Ingest and transform stocks
-python -m DataProcessing.etl_cli ingest-stocks --since 2026-01-01 --until 2026-01-28
-python -m DataProcessing.etl_cli transform-stocks --since 2026-01-01 --output transformed.csv
+python -m pipelines.etl_cli ingest-stocks --since 2026-01-01 --until 2026-01-28
+python -m pipelines.etl_cli transform-stocks --since 2026-01-01 --output transformed.csv
 
 # Transform news with sentiment analysis
-python -m DataProcessing.etl_cli transform-news --date 2026-01-27 --sentiment vader
+python -m pipelines.etl_cli transform-news --date 2026-01-27 --sentiment vader
 
 # News ETL with optional agentic (LLM) enrichment: set enable_agentic_transform=True
 # or LLM_ENABLE_AGENTIC_TRANSFORM=true and OPENAI_API_KEY or ANTHROPIC_API_KEY.
@@ -197,10 +201,10 @@ python -m DataProcessing.etl_cli transform-news --date 2026-01-27 --sentiment va
 # S3: paths include agentic=true/ or agentic=false/ for comparison.
 
 # Export for GenAI with embeddings
-python -m DataProcessing.etl_cli export-genai --date 2026-01-27 --embeddings
+python -m pipelines.etl_cli export-genai --date 2026-01-27 --embeddings
 ```
 
-For detailed transformation documentation, see [DataProcessing/README.md](DataProcessing/README.md).  
+See [docs/ETL_AND_TRANSFORMS.md](docs/ETL_AND_TRANSFORMS.md) for CLI and import reference; `notebooks/etl/` and `notebooks/ingestion/` for examples.  
 For agentic AI design and branching, see [docs/AGENTIC_AI_AND_BRANCHING.md](docs/AGENTIC_AI_AND_BRANCHING.md).
 
 ## Development

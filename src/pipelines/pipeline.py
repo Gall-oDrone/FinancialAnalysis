@@ -8,7 +8,7 @@ A production-ready pipeline that orchestrates:
 4. Transformed data storage (S3 and/or PostgreSQL)
 
 Usage:
-    from DataProcessing.pipeline import DataPipeline, PipelineConfig
+    from pipelines.pipeline import DataPipeline, PipelineConfig
     
     config = PipelineConfig(
         topics=["crypto", "stocks"],

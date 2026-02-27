@@ -7,7 +7,7 @@ Provides transformations for stock/crypto price data including:
 - Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands)
 
 Usage:
-    from DataProcessing.stock_transformers import StockTransformationPipeline
+    from transform.stocks.stock_transformers import StockTransformationPipeline
     
     pipeline = StockTransformationPipeline()
     transformed_df = pipeline.transform(stocks_df)
