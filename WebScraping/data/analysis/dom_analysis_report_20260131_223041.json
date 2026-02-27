@@ -1,0 +1,74 @@
+{
+  "generated": "2026-01-31T22:30:41.567853",
+  "url": "https://finance.yahoo.com/topic/crypto/",
+  "html_files": {
+    "raw": "/Users/diegogallovalenzuela/financial_analysis/WebScraping/data/dom_tree_finance_yahoo_com_topic_crypto_20260131_220443.html",
+    "prettified": ""
+  },
+  "summary": {
+    "total": 7,
+    "ok": 1,
+    "fail": 6
+  },
+  "xpath_results": [
+    {
+      "name": "main_headline_h1",
+      "xpath": "/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[1]/div/div[1]/h1",
+      "status": "FAIL",
+      "match_count": 0,
+      "error_msg": "XPath matched 0 elements",
+      "alternatives": []
+    },
+    {
+      "name": "news_list_ul",
+      "xpath": "/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[3]/div/div/div/ul",
+      "status": "FAIL",
+      "match_count": 0,
+      "error_msg": "XPath matched 0 elements",
+      "alternatives": []
+    },
+    {
+      "name": "extractToText_fallback_h1",
+      "xpath": "/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[1]/div/div/div/div[1]/h1",
+      "status": "FAIL",
+      "match_count": 0,
+      "error_msg": "XPath matched 0 elements",
+      "alternatives": []
+    },
+    {
+      "name": "ARTICLE_GRIDLAYOUT",
+      "xpath": "/html/body/div[2]/main/section/section/section/article",
+      "status": "FAIL",
+      "match_count": 0,
+      "error_msg": "XPath matched 0 elements",
+      "alternatives": []
+    },
+    {
+      "name": "SECTION_TOPICHERO",
+      "xpath": "/html/body/div[2]/main/section/section/section/article/section[1]",
+      "status": "FAIL",
+      "match_count": 0,
+      "error_msg": "XPath matched 0 elements",
+      "alternatives": []
+    },
+    {
+      "name": "UL_STREAM_ITEMS_yf_1drgw5l",
+      "xpath": "/html/body/div[2]/main/section/section/section/section/section/div/div/div/div/ul",
+      "status": "FAIL",
+      "match_count": 0,
+      "error_msg": "XPath matched 0 elements",
+      "alternatives": []
+    },
+    {
+      "name": "UL_STREAM_ITEMS_yf_9xydx9",
+      "xpath": "/html/body/div[2]/div[3]/main/section/section/section/section/section/div/div[1]/div/div/ul",
+      "status": "OK",
+      "match_count": 1,
+      "error_msg": null,
+      "alternatives": []
+    }
+  ],
+  "h1_candidates": [],
+  "ul_candidates": [],
+  "failed_alternatives": {}
+}
