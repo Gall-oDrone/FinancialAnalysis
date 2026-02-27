@@ -33,3 +33,8 @@ numpy>=1.24.0
 # After installing, download NLP models:
 # python -m spacy download en_core_web_sm
 # python -m nltk.downloader punkt stopwords vader_lexicon
+
+# Optional: Agentic AI (LLM clients for ETL transform stage)
+# Install at least one for agentic transform / RAG + LLM
+# openai>=1.0.0
+# anthropic>=0.18.0

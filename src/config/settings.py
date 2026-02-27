@@ -108,6 +108,33 @@ class MLConfig:
         )
 
 
+class LLMAgentConfig:
+    """Agentic AI / LLM configuration for ETL transforms (from env)."""
+
+    def __init__(self):
+        self.provider: str = os.getenv("LLM_PROVIDER", "openai").lower()
+        self.model: Optional[str] = os.getenv("LLM_MODEL")
+        self.api_key_env_var: Optional[str] = os.getenv("LLM_API_KEY_ENV_VAR")
+        self.max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+        self.temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+        self.timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
+        self.max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
+        self.retry_backoff_factor: float = float(
+            os.getenv("LLM_RETRY_BACKOFF_FACTOR", "2.0")
+        )
+        self.rate_limit_rpm: Optional[int] = (
+            int(os.getenv("LLM_RATE_LIMIT_RPM"))
+            if os.getenv("LLM_RATE_LIMIT_RPM")
+            else None
+        )
+        self.enable_agentic_transform: bool = os.getenv(
+            "LLM_ENABLE_AGENTIC_TRANSFORM", "False"
+        ).lower() == "true"
+
+    def __repr__(self) -> str:
+        return f"LLMAgentConfig(provider={self.provider}, model={self.model})"
+
+
 class PipelineConfig:
     """Data pipeline configuration."""
 
@@ -147,6 +174,7 @@ class Settings:
         self.logging = LoggingConfig()
         self.scraping = ScrapingConfig()
         self.ml = MLConfig()
+        self.agent = LLMAgentConfig()
         self.pipeline = PipelineConfig()
         self.debug: bool = os.getenv("DEBUG", "False").lower() == "true"
         self.environment: str = os.getenv("ENVIRONMENT", "development")
