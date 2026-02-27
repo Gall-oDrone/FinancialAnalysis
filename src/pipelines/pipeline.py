@@ -45,6 +45,7 @@ class PipelineStage(Enum):
     SCRAPE = "scrape"
     UPLOAD_RAW = "upload_raw"
     TRANSFORM = "transform"
+    AGENTIC_TRANSFORM = "agentic_transform"  # LLM-based enrichment (optional)
     UPLOAD_TRANSFORMED = "upload_transformed"
     SAVE_DB = "save_db"
     EXPORT_GENAI = "export_genai"
@@ -83,12 +84,26 @@ class PipelineConfig:
         PipelineStage.UPLOAD_TRANSFORMED,
     ])
     continue_on_error: bool = True
+    # Agentic AI: enable LLM-based enrichment after text transform
+    enable_agentic_transform: bool = False
+    agentic_transform_max_rows: Optional[int] = None  # cap for testing
     
     def __post_init__(self):
         """Load defaults from settings if not provided."""
         settings = get_settings()
         if self.s3_bucket is None:
             self.s3_bucket = settings.aws.default_bucket
+        # Inject agentic transform stage if enabled (after TRANSFORM)
+        if getattr(self, "enable_agentic_transform", False) or getattr(
+            getattr(settings, "agent", None), "enable_agentic_transform", False
+        ):
+            if PipelineStage.AGENTIC_TRANSFORM not in self.stages:
+                new_stages = []
+                for s in self.stages:
+                    new_stages.append(s)
+                    if s == PipelineStage.TRANSFORM:
+                        new_stages.append(PipelineStage.AGENTIC_TRANSFORM)
+                self.stages = new_stages
 
 
 @dataclass
@@ -353,6 +368,37 @@ class GenAIExportStageHandler(PipelineStageHandler):
         return data
 
 
+class AgenticTransformStageHandler(PipelineStageHandler):
+    """Handles LLM-based enrichment (agentic AI) after text transform."""
+
+    @property
+    def name(self) -> str:
+        return "Agentic Transform (LLM Enrichment)"
+
+    def execute(self, data: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
+        """Enrich transformed articles using configured LLM (OpenAI/Claude)."""
+        if data.empty:
+            logger.warning("No data for agentic transform")
+            return data
+        try:
+            from agents.registry import get_llm_client
+            from agents.transforms.agentic_transform import AgenticTextEnricher
+            from config.settings import get_settings
+        except ImportError as e:
+            logger.warning("Agentic transform skipped (agents not available): %s", e)
+            return data
+        settings = get_settings()
+        provider = getattr(settings.agent, "provider", "openai")
+        try:
+            client = get_llm_client(provider)
+        except (KeyError, ValueError) as e:
+            logger.warning("Agentic transform skipped (LLM client not configured): %s", e)
+            return data
+        enricher = AgenticTextEnricher(client=client)
+        max_rows = getattr(config, "agentic_transform_max_rows", None)
+        return enricher.enrich_dataframe(data, max_rows=max_rows)
+
+
 class StockTransformStageHandler(PipelineStageHandler):
     """Handles stock data transformations."""
     
@@ -451,6 +497,7 @@ class DataPipeline:
         PipelineStage.SCRAPE: ScrapeStageHandler,
         PipelineStage.UPLOAD_RAW: UploadRawStageHandler,
         PipelineStage.TRANSFORM: TransformStageHandler,
+        PipelineStage.AGENTIC_TRANSFORM: AgenticTransformStageHandler,
         PipelineStage.UPLOAD_TRANSFORMED: UploadTransformedStageHandler,
         PipelineStage.SAVE_DB: SaveToDBStageHandler,
         PipelineStage.EXPORT_GENAI: 'GenAIExportStageHandler',
