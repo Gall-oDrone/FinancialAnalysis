@@ -83,6 +83,7 @@ FINANCIAL_NEWS_TRANSFORMED_TABLE_QUERY = """
                 llm_summary TEXT,
                 llm_themes JSONB,
                 llm_entities JSONB,
+                llm_financial_metrics JSONB,
                 llm_error TEXT,
                 agentic_enabled BOOLEAN NOT NULL DEFAULT false,
                 

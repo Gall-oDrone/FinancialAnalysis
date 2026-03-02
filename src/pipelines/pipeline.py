@@ -87,6 +87,7 @@ class PipelineConfig:
     # Agentic AI: enable LLM-based enrichment after text transform
     enable_agentic_transform: bool = False
     agentic_transform_max_rows: Optional[int] = None  # cap for testing
+    agentic_task_type: str = "financial_metrics"  # "financial_metrics" | "summary_themes"
     
     def __post_init__(self):
         """Load defaults from settings if not provided."""
@@ -384,7 +385,11 @@ class AgenticTransformStageHandler(PipelineStageHandler):
             return data
         try:
             from agents.registry import get_llm_client
-            from agents.transforms.agentic_transform import AgenticTextEnricher
+            from agents.transforms.agentic_transform import (
+                AgenticTextEnricher,
+                FinancialMetricsTask,
+                SummaryAndThemesTask,
+            )
             from config.settings import get_settings
         except ImportError as e:
             logger.warning("Agentic transform skipped (agents not available): %s", e)
@@ -396,7 +401,13 @@ class AgenticTransformStageHandler(PipelineStageHandler):
         except (KeyError, ValueError) as e:
             logger.warning("Agentic transform skipped (LLM client not configured): %s", e)
             return data
-        enricher = AgenticTextEnricher(client=client)
+        task_type = getattr(config, "agentic_task_type", "financial_metrics")
+        task = (
+            FinancialMetricsTask()
+            if task_type == "financial_metrics"
+            else SummaryAndThemesTask()
+        )
+        enricher = AgenticTextEnricher(client=client, task=task)
         max_rows = getattr(config, "agentic_transform_max_rows", None)
         return enricher.enrich_dataframe(data, max_rows=max_rows)
 
@@ -459,7 +470,7 @@ class SaveToDBStageHandler(PipelineStageHandler):
             "tickers", "sentiment_label", "sentiment_score", "positive_score",
             "negative_score", "neutral_score", "primary_intent",
             "intent_confidence", "secondary_intents", "keywords", "entities",
-            "llm_summary", "llm_themes", "llm_entities", "llm_error", "agentic_enabled",
+            "llm_summary", "llm_themes", "llm_entities", "llm_financial_metrics", "llm_error", "agentic_enabled",
         ]
         
         saved_count = 0

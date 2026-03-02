@@ -91,7 +91,7 @@ def build_s3_key_stocks(
 def _serialize_row_for_news_db(row: Dict[str, Any]) -> Dict[str, Any]:
     """Convert list/dict fields to JSON strings for Postgres JSONB."""
     out = dict(row)
-    for key in ("tickers", "secondary_intents", "keywords", "entities", "llm_themes", "llm_entities"):
+    for key in ("tickers", "secondary_intents", "keywords", "entities", "llm_themes", "llm_entities", "llm_financial_metrics"):
         if key in out and out[key] is not None:
             v = out[key]
             if isinstance(v, (list, dict)):
@@ -155,7 +155,7 @@ def save_transformed_news_to_postgres(
         "sentiment_label", "sentiment_score", "positive_score", "negative_score", "neutral_score",
         "primary_intent", "intent_confidence", "secondary_intents",
         "keywords", "entities",
-        "llm_summary", "llm_themes", "llm_entities", "llm_error", "agentic_enabled",
+        "llm_summary", "llm_themes", "llm_entities", "llm_financial_metrics", "llm_error", "agentic_enabled",
     ]
     saved = 0
     for _, row in transformed_df.iterrows():

@@ -121,6 +121,20 @@ class TestSerializeRowForNewsDb:
         out = _serialize_row_for_news_db(row)
         assert isinstance(out["llm_themes"], str) and "earnings" in out["llm_themes"]
 
+    def test_serialize_llm_financial_metrics(self):
+        row = {
+            "id": "1",
+            "llm_financial_metrics": {
+                "event_type": "macro",
+                "overall_sentiment": 0.5,
+                "confidence": 0.85,
+            },
+        }
+        out = _serialize_row_for_news_db(row)
+        assert isinstance(out["llm_financial_metrics"], str)
+        assert "macro" in out["llm_financial_metrics"]
+        assert "0.5" in out["llm_financial_metrics"]
+
 
 class TestSaveTransformedNewsToPostgres:
     """Test save_transformed_news_to_postgres with agentic_enabled (mocked DB)."""
