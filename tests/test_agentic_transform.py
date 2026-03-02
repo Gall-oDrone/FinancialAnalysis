@@ -12,6 +12,10 @@ from agents.transforms.agentic_transform import (
     SummaryAndThemesTask,
     FINANCIAL_EVENT_TYPES,
     IMPACT_HORIZONS,
+    SENTIMENT_LABELS,
+    IMPACT_LEVELS,
+    SIGNALS,
+    SECTORS,
 )
 
 
@@ -45,6 +49,12 @@ class TestFinancialMetricsTask:
         assert "event_type" in prompt
         assert "impact_horizon" in prompt
         assert "confidence" in prompt
+        assert "sentiment_label" in prompt
+        assert "signal" in prompt
+        assert "actionable" in prompt
+        assert "sectors" in prompt
+        assert "entities" in prompt
+        assert "key_facts" in prompt
 
     def test_build_prompt_uses_first_ticker_from_list(self, task, sample_row):
         prompt = task.build_prompt(sample_row)
@@ -77,6 +87,11 @@ class TestFinancialMetricsTask:
         assert m["overall_sentiment"] == 0.5
         assert m["confidence"] == 0.85
         assert m["ticker"] == "BTC"
+        # New fields default when omitted
+        assert m.get("sentiment_label") is None
+        assert m.get("sectors") == []
+        assert m.get("entities") == []
+        assert m.get("key_facts") == []
 
     def test_parse_response_clamps_scores_to_minus1_to_1(self, task):
         payload = {
@@ -183,6 +198,100 @@ class TestFinancialMetricsTask:
         assert "intraday" in IMPACT_HORIZONS
         assert "short_term" in IMPACT_HORIZONS
         assert "long_term" in IMPACT_HORIZONS
+
+    def test_parse_response_sentiment_label_impact_level_signal(self, task):
+        payload = {
+            "ticker": "",
+            "event_type": "other",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.0,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.8,
+            "sentiment_label": "positive",
+            "impact_level": "high",
+            "signal": "bullish",
+            "actionable": True,
+            "sectors": ["crypto", "macro"],
+            "entities": ["Fed", "Bitcoin"],
+            "key_facts": ["Fed signaled rate cuts.", "BTC-USD up 5%"],
+        }
+        out = task.parse_response(json.dumps(payload))
+        m = out["llm_financial_metrics"]
+        assert m["sentiment_label"] == "positive"
+        assert m["impact_level"] == "high"
+        assert m["signal"] == "bullish"
+        assert m["actionable"] is True
+        assert m["sectors"] == ["crypto", "macro"]
+        assert m["entities"] == ["Fed", "Bitcoin"]
+        assert m["key_facts"] == ["Fed signaled rate cuts.", "BTC-USD up 5%"]
+        assert out["llm_entities"] == ["Fed", "Bitcoin"]
+
+    def test_parse_response_invalid_sentiment_label_and_signal_become_none(self, task):
+        payload = {
+            "ticker": "",
+            "event_type": "other",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.0,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.8,
+            "sentiment_label": "invalid_label",
+            "impact_level": "invalid_level",
+            "signal": "invalid_signal",
+            "actionable": "not_bool",
+            "sectors": ["crypto", "invalid_sector"],
+            "entities": ["Fed"],
+            "key_facts": [],
+        }
+        out = task.parse_response(json.dumps(payload))
+        m = out["llm_financial_metrics"]
+        assert m["sentiment_label"] is None
+        assert m["impact_level"] is None
+        assert m["signal"] is None
+        assert m["actionable"] is None
+        assert m["sectors"] == ["crypto"]
+        assert m["entities"] == ["Fed"]
+        assert out["llm_entities"] == ["Fed"]
+
+    def test_parse_response_key_facts_capped(self, task):
+        payload = {
+            "ticker": "",
+            "event_type": "other",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.0,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.8,
+            "sentiment_label": "neutral",
+            "impact_level": "medium",
+            "signal": "neutral",
+            "actionable": False,
+            "sectors": [],
+            "entities": [],
+            "key_facts": [f"fact_{i}" for i in range(15)],
+        }
+        out = task.parse_response(json.dumps(payload))
+        m = out["llm_financial_metrics"]
+        assert len(m["key_facts"]) <= 10
+
+    def test_new_constants(self):
+        assert SENTIMENT_LABELS == ["positive", "negative", "neutral"]
+        assert "high" in IMPACT_LEVELS and "low" in IMPACT_LEVELS
+        assert "bullish" in SIGNALS and "bearish" in SIGNALS
+        assert "crypto" in SECTORS and "DeFi" in SECTORS and "other" in SECTORS
 
 
 class TestSummaryAndThemesTask:

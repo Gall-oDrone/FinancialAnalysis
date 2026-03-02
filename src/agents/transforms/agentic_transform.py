@@ -29,6 +29,10 @@ FINANCIAL_EVENT_TYPES = [
     "regulation", "product", "management_change", "other",
 ]
 IMPACT_HORIZONS = ["intraday", "short_term", "medium_term", "long_term"]
+SENTIMENT_LABELS = ["positive", "negative", "neutral"]
+IMPACT_LEVELS = ["high", "medium", "low"]
+SIGNALS = ["bullish", "neutral", "bearish"]
+SECTORS = ["DeFi", "regulation", "macro", "equities", "crypto", "commodities", "fx", "rates", "other"]
 
 
 # ============================================================================
@@ -127,8 +131,10 @@ class FinancialMetricsTask(EnrichmentTask):
     """
     Production-grade financial feature extraction for trading/ML.
 
-    Extracts: overall_sentiment, forward_sentiment, surprise_score, risk_score,
-    uncertainty_score, impact_strength, immediacy, confidence, event_type, impact_horizon.
+    Extracts: numeric scores (overall_sentiment, forward_sentiment, surprise_score,
+    risk_score, uncertainty_score, impact_strength, immediacy, confidence),
+    event_type, impact_horizon, sentiment_label, impact_level, signal, actionable,
+    sectors, entities (→ llm_entities), key_facts.
     All numeric scores in [-1, 1], confidence in [0, 1]. Returns strict JSON only.
     """
 
@@ -156,8 +162,20 @@ class FinancialMetricsTask(EnrichmentTask):
             "- impact_strength: expected magnitude of market reaction.\n"
             "- immediacy: expected speed of price reaction (1.0=instant, 0.2=slow thematic).\n"
             "- confidence: your self-assessed clarity of the signal (0–1).\n\n"
+            "Categorical fields (use only allowed values):\n"
+            "- sentiment_label: overall tone classification.\n"
+            "- impact_level: expected market impact magnitude (high/medium/low).\n"
+            "- signal: trading signal (bullish/neutral/bearish).\n"
+            "- actionable: true if the news is likely to drive immediate trading decisions, else false.\n"
+            "- sectors: list of applicable sectors/themes from the allowed set.\n"
+            "- entities: list of named entities (companies, people, products, currencies) mentioned.\n"
+            "- key_facts: list of 1–5 short factual claims or key points (strings).\n\n"
             f"Event types allowed: {json.dumps(FINANCIAL_EVENT_TYPES)}\n"
-            f"Impact horizon allowed: {json.dumps(IMPACT_HORIZONS)}"
+            f"Impact horizon allowed: {json.dumps(IMPACT_HORIZONS)}\n"
+            f"Sentiment labels allowed: {json.dumps(SENTIMENT_LABELS)}\n"
+            f"Impact levels allowed: {json.dumps(IMPACT_LEVELS)}\n"
+            f"Signals allowed: {json.dumps(SIGNALS)}\n"
+            f"Sectors allowed: {json.dumps(SECTORS)}"
         )
 
     def build_prompt(self, row: pd.Series) -> str:
@@ -189,7 +207,14 @@ class FinancialMetricsTask(EnrichmentTask):
             '"impact_strength": 0.0,\n'
             '"immediacy": 0.0,\n'
             '"impact_horizon": "",\n'
-            '"confidence": 0.0\n'
+            '"confidence": 0.0,\n'
+            '"sentiment_label": "",\n'
+            '"impact_level": "",\n'
+            '"signal": "",\n'
+            '"actionable": false,\n'
+            '"sectors": [],\n'
+            '"entities": [],\n'
+            '"key_facts": []\n'
             "}"
         )
 
@@ -246,18 +271,69 @@ class FinancialMetricsTask(EnrichmentTask):
         except (TypeError, ValueError):
             return None
 
+    def _normalize_str_list(self, v: Any, allowed: List[str]) -> List[str]:
+        """Return list of strings that are in allowed; invalid entries dropped."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = [v]
+        if not isinstance(v, list):
+            return []
+        out = []
+        for item in v:
+            s = str(item).strip() if item is not None else ""
+            if s and (not allowed or s in allowed):
+                out.append(s)
+        return out
+
+    def _normalize_entities(self, v: Any) -> List[str]:
+        """Return list of entity strings (no allowed set)."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if x is not None and str(x).strip()]
+        return []
+
+    def _normalize_key_facts(self, v: Any) -> List[str]:
+        """Return list of non-empty strings (key facts)."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if x is not None and str(x).strip()][:10]
+        return []
+
     def parse_response(self, content: str) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         obj = self._extract_json(content)
         if not obj:
-            return {"llm_financial_metrics": None, "llm_error": "Failed to parse JSON from response"}
-        # Build validated payload for llm_financial_metrics
+            return {"llm_financial_metrics": None, "llm_entities": [], "llm_error": "Failed to parse JSON from response"}
+        # Validate categorical fields
         event_type = obj.get("event_type")
         if event_type not in FINANCIAL_EVENT_TYPES:
             event_type = "other"
         impact_horizon = obj.get("impact_horizon")
         if impact_horizon not in IMPACT_HORIZONS:
             impact_horizon = None
+        sentiment_label = obj.get("sentiment_label")
+        if sentiment_label not in SENTIMENT_LABELS:
+            sentiment_label = None
+        impact_level = obj.get("impact_level")
+        if impact_level not in IMPACT_LEVELS:
+            impact_level = None
+        signal = obj.get("signal")
+        if signal not in SIGNALS:
+            signal = None
+        actionable = obj.get("actionable")
+        if not isinstance(actionable, bool):
+            actionable = None
+        sectors = self._normalize_str_list(obj.get("sectors"), SECTORS)
+        entities = self._normalize_entities(obj.get("entities"))
+        key_facts = self._normalize_key_facts(obj.get("key_facts"))
+        # Build validated payload for llm_financial_metrics
         metrics = {
             "ticker": obj.get("ticker"),
             "event_type": event_type,
@@ -270,8 +346,16 @@ class FinancialMetricsTask(EnrichmentTask):
             "immediacy": self._clamp_score(obj.get("immediacy")),
             "impact_horizon": impact_horizon,
             "confidence": self._clamp_confidence(obj.get("confidence")),
+            "sentiment_label": sentiment_label,
+            "impact_level": impact_level,
+            "signal": signal,
+            "actionable": actionable,
+            "sectors": sectors,
+            "entities": entities,
+            "key_facts": key_facts,
         }
         out["llm_financial_metrics"] = metrics
+        out["llm_entities"] = entities
         return out
 
 
