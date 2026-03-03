@@ -310,7 +310,17 @@ class FinancialMetricsTask(EnrichmentTask):
         out: Dict[str, Any] = {}
         obj = self._extract_json(content)
         if not obj:
-            return {"llm_financial_metrics": None, "llm_entities": [], "llm_error": "Failed to parse JSON from response"}
+            return {
+                "llm_financial_metrics": None,
+                "llm_entities": [],
+                "llm_error": "Failed to parse JSON from response",
+                "llm_ticker": None, "llm_event_type": None, "llm_overall_sentiment": None,
+                "llm_forward_sentiment": None, "llm_surprise_score": None, "llm_risk_score": None,
+                "llm_uncertainty_score": None, "llm_impact_strength": None, "llm_immediacy": None,
+                "llm_impact_horizon": None, "llm_confidence": None, "llm_sentiment_label": None,
+                "llm_impact_level": None, "llm_signal": None, "llm_actionable": None,
+                "llm_sectors": [], "llm_key_facts": [],
+            }
         # Validate categorical fields
         event_type = obj.get("event_type")
         if event_type not in FINANCIAL_EVENT_TYPES:
@@ -356,6 +366,24 @@ class FinancialMetricsTask(EnrichmentTask):
         }
         out["llm_financial_metrics"] = metrics
         out["llm_entities"] = entities
+        # Flatten for production: one column per feature (DB + S3 CSV headers)
+        out["llm_ticker"] = metrics.get("ticker")
+        out["llm_event_type"] = metrics.get("event_type")
+        out["llm_overall_sentiment"] = metrics.get("overall_sentiment")
+        out["llm_forward_sentiment"] = metrics.get("forward_sentiment")
+        out["llm_surprise_score"] = metrics.get("surprise_score")
+        out["llm_risk_score"] = metrics.get("risk_score")
+        out["llm_uncertainty_score"] = metrics.get("uncertainty_score")
+        out["llm_impact_strength"] = metrics.get("impact_strength")
+        out["llm_immediacy"] = metrics.get("immediacy")
+        out["llm_impact_horizon"] = metrics.get("impact_horizon")
+        out["llm_confidence"] = metrics.get("confidence")
+        out["llm_sentiment_label"] = metrics.get("sentiment_label")
+        out["llm_impact_level"] = metrics.get("impact_level")
+        out["llm_signal"] = metrics.get("signal")
+        out["llm_actionable"] = metrics.get("actionable")
+        out["llm_sectors"] = sectors
+        out["llm_key_facts"] = key_facts
         return out
 
 

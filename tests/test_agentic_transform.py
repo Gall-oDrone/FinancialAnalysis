@@ -230,6 +230,13 @@ class TestFinancialMetricsTask:
         assert m["entities"] == ["Fed", "Bitcoin"]
         assert m["key_facts"] == ["Fed signaled rate cuts.", "BTC-USD up 5%"]
         assert out["llm_entities"] == ["Fed", "Bitcoin"]
+        # Flattened columns (one per feature for DB/S3)
+        assert out["llm_overall_sentiment"] == 0.0
+        assert out["llm_sentiment_label"] == "positive"
+        assert out["llm_signal"] == "bullish"
+        assert out["llm_actionable"] is True
+        assert out["llm_sectors"] == ["crypto", "macro"]
+        assert out["llm_key_facts"] == ["Fed signaled rate cuts.", "BTC-USD up 5%"]
 
     def test_parse_response_invalid_sentiment_label_and_signal_become_none(self, task):
         payload = {

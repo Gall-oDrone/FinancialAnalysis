@@ -462,7 +462,7 @@ class SaveToDBStageHandler(PipelineStageHandler):
         _ensure_news_transformed_table(db_conn)
         db_conn.set_table(config.db_table_name)
         
-        # Define columns for the transformed table (includes agentic/LLM columns when enabled)
+        # Define columns for the transformed table (id = article id, one row per article)
         agentic_enabled = getattr(config, "enable_agentic_transform", False)
         header = [
             "id", "source", "headline", "href", "summary", "content",
@@ -471,6 +471,10 @@ class SaveToDBStageHandler(PipelineStageHandler):
             "negative_score", "neutral_score", "primary_intent",
             "intent_confidence", "secondary_intents", "keywords", "entities",
             "llm_summary", "llm_themes", "llm_entities", "llm_financial_metrics", "llm_error", "agentic_enabled",
+            "llm_ticker", "llm_event_type", "llm_overall_sentiment", "llm_forward_sentiment",
+            "llm_surprise_score", "llm_risk_score", "llm_uncertainty_score", "llm_impact_strength",
+            "llm_immediacy", "llm_impact_horizon", "llm_confidence", "llm_sentiment_label",
+            "llm_impact_level", "llm_signal", "llm_actionable", "llm_sectors", "llm_key_facts",
         ]
         
         saved_count = 0

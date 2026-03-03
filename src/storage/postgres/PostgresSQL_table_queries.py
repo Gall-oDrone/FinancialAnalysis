@@ -86,6 +86,24 @@ FINANCIAL_NEWS_TRANSFORMED_TABLE_QUERY = """
                 llm_financial_metrics JSONB,
                 llm_error TEXT,
                 agentic_enabled BOOLEAN NOT NULL DEFAULT false,
+                -- Flattened agentic columns (one per feature for query/BI/S3)
+                llm_ticker VARCHAR(100),
+                llm_event_type VARCHAR(50),
+                llm_overall_sentiment FLOAT,
+                llm_forward_sentiment FLOAT,
+                llm_surprise_score FLOAT,
+                llm_risk_score FLOAT,
+                llm_uncertainty_score FLOAT,
+                llm_impact_strength FLOAT,
+                llm_immediacy FLOAT,
+                llm_impact_horizon VARCHAR(50),
+                llm_confidence FLOAT,
+                llm_sentiment_label VARCHAR(20),
+                llm_impact_level VARCHAR(20),
+                llm_signal VARCHAR(20),
+                llm_actionable BOOLEAN,
+                llm_sectors JSONB,
+                llm_key_facts JSONB,
                 
                 -- Metadata
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -101,6 +119,8 @@ FINANCIAL_NEWS_TRANSFORMED_INDEXES = """
             CREATE INDEX IF NOT EXISTS idx_transformed_datetime ON financial_news_transformed(datetime);
             CREATE INDEX IF NOT EXISTS idx_transformed_tickers ON financial_news_transformed USING GIN(tickers);
             CREATE INDEX IF NOT EXISTS idx_transformed_agentic ON financial_news_transformed(agentic_enabled);
+            CREATE INDEX IF NOT EXISTS idx_transformed_llm_signal ON financial_news_transformed(llm_signal);
+            CREATE INDEX IF NOT EXISTS idx_transformed_llm_event_type ON financial_news_transformed(llm_event_type);
         """
 
 # Table for processed/transformed stock data
