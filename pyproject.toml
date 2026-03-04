@@ -51,6 +51,9 @@ spacy = ["spacy>=3.7.0"]
 all = ["transformers>=4.35.0", "torch>=2.0.0", "spacy>=3.7.0"]
 
 [project.optional-dependencies]
+mcp = [
+    "mcp[cli]>=1.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
@@ -67,7 +70,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["config*", "core*", "storage*", "ingestion*", "transform*", "export*", "pipelines*"]
+include = ["config*", "core*", "storage*", "ingestion*", "transform*", "export*", "pipelines*", "agents*"]
 exclude = ["tests*", "*.tests", "*.tests.*", "tests.*"]
 
 [tool.setuptools.package-dir]

@@ -13,7 +13,7 @@ Future: implement MCP server that serves:
 See: https://modelcontextprotocol.io
 """
 
-# Placeholder: MCP server and tool implementations can be added here.
-# Example: from agents.mcp.server import MCPServer
+# MCP server: run with python -m agents.mcp.server (requires pip install 'mcp[cli]')
+# from agents.mcp.server import main  # stdio server entrypoint
 
-__all__: list = []
+__all__: list = ["server"]
