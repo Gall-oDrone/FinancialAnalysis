@@ -34,7 +34,6 @@ numpy>=1.24.0
 # python -m spacy download en_core_web_sm
 # python -m nltk.downloader punkt stopwords vader_lexicon
 
-# Optional: Agentic AI (LLM clients for ETL transform stage)
-# Install at least one for agentic transform / RAG + LLM
-# openai>=1.0.0
-# anthropic>=0.18.0
+# Agentic AI (LLM clients for ETL transform stage) – required for agentic news transform
+openai>=1.0.0
+# anthropic>=0.18.0  # optional: for LLM_PROVIDER=claude

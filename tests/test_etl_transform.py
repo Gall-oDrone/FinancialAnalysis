@@ -18,6 +18,7 @@ from pipelines.etl_transform import (
     build_s3_key_news_batch,
     build_s3_key_stocks,
     _serialize_row_for_news_db,
+    agentic_result_has_failures,
     save_transformed_news_to_postgres,
     upload_dataframe_to_s3_key,
 )
@@ -91,6 +92,41 @@ class TestS3PathBuilders:
         key = build_s3_key_stocks("eth-usd", ts)
         assert "book=eth-usd" in key
         assert "20260222" in key
+
+
+class TestAgenticResultHasFailures:
+    """Test agentic_result_has_failures: do not persist when any row has llm_error."""
+
+    def test_empty_dataframe(self):
+        assert agentic_result_has_failures(pd.DataFrame()) is False
+
+    def test_none_handling(self):
+        assert agentic_result_has_failures(None) is False
+
+    def test_no_llm_error_column(self):
+        df = pd.DataFrame([{"id": "1", "headline": "H", "llm_summary": "Ok"}])
+        assert agentic_result_has_failures(df) is False
+
+    def test_llm_error_all_nan(self):
+        df = pd.DataFrame([
+            {"id": "1", "llm_error": pd.NA},
+            {"id": "2", "llm_error": None},
+        ])
+        assert not agentic_result_has_failures(df)
+
+    def test_llm_error_one_failure(self):
+        df = pd.DataFrame([
+            {"id": "1", "llm_error": None},
+            {"id": "2", "llm_error": "No module named 'openai'"},
+        ])
+        assert agentic_result_has_failures(df)
+
+    def test_llm_error_all_failures(self):
+        df = pd.DataFrame([
+            {"id": "1", "llm_error": "OpenAI request failed"},
+            {"id": "2", "llm_error": "Timeout"},
+        ])
+        assert agentic_result_has_failures(df)
 
 
 class TestSerializeRowForNewsDb:

@@ -133,6 +133,20 @@ def _ensure_stocks_processed_table(pg_conn) -> None:
         logger.warning("Could not create processed stocks indexes: %s", e)
 
 
+def agentic_result_has_failures(transformed_df: pd.DataFrame) -> bool:
+    """
+    Return True if the agentic enrichment produced any per-row errors (llm_error set).
+    Call this before saving/uploading agentic results: if True, do not persist to DB or S3.
+    """
+    if transformed_df is None or transformed_df.empty:
+        return False
+    if "llm_error" not in transformed_df.columns:
+        return False
+    # Treat only non-empty strings as errors (robust to None/pd.NA/NaN across pandas versions)
+    err = transformed_df["llm_error"].fillna("").astype(str).str.strip()
+    return (err != "").any()
+
+
 def save_transformed_news_to_postgres(
     pg_conn,
     transformed_df: pd.DataFrame,
