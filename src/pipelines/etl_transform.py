@@ -68,7 +68,9 @@ def build_s3_key_news_batch(
         return f"{prefix}/{agentic_seg}batch=run/format=csv/{suffix}_{ts}.csv"
     if batch_type == "week":
         iso = dt.isocalendar()
-        return f"{prefix}/{agentic_seg}year={dt.year}/week={iso[1]:02d}/format=csv/{suffix}_y{dt.year}_w{iso[1]:02d}.csv"
+        # Use ISO year (iso[0]), not dt.year: week 1 of 2025 has Monday in Dec 2024
+        iso_year, iso_week = iso[0], iso[1]
+        return f"{prefix}/{agentic_seg}year={iso_year}/week={iso_week:02d}/format=csv/{suffix}_y{iso_year}_w{iso_week:02d}.csv"
     if batch_type == "month":
         return f"{prefix}/{agentic_seg}year={dt.year}/month={dt.month:02d}/format=csv/{suffix}_y{dt.year}_m{dt.month:02d}.csv"
     if batch_type == "year":

@@ -78,6 +78,15 @@ class TestS3PathBuilders:
         assert "year=2026" in d and "month=02" in d and "day=26" in d
         assert "format=csv" in d and "y2026_m02_d26" in d
 
+    def test_build_s3_key_news_batch_week_uses_iso_year(self):
+        # Monday of ISO 2025 week 1 is 2024-12-30; path must be year=2025/week=01
+        monday_week1_2025 = datetime(2024, 12, 30)
+        key = build_s3_key_news_batch("week", monday_week1_2025)
+        assert "year=2025" in key
+        assert "week=01" in key
+        assert "y2025_w01" in key
+        assert "2024" not in key
+
     def test_build_s3_key_news_batch_invalid(self):
         with pytest.raises(ValueError, match="batch_type"):
             build_s3_key_news_batch("invalid", datetime(2026, 2, 26))
