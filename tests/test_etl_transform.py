@@ -18,6 +18,8 @@ from pipelines.etl_transform import (
     build_s3_key_news_batch,
     build_s3_key_stocks,
     _serialize_row_for_news_db,
+    _group_transformed_by_partition,
+    upload_news_batches_to_s3,
     agentic_result_has_failures,
     save_transformed_news_to_postgres,
     upload_dataframe_to_s3_key,
@@ -64,14 +66,17 @@ class TestS3PathBuilders:
         assert "agentic=true" in key_true
         assert "batch=run" in key_false and "batch=run" in key_true
 
-    def test_build_s3_key_news_batch_week_month_year(self):
+    def test_build_s3_key_news_batch_week_month_year_day(self):
         dt = datetime(2026, 2, 26)
         w = build_s3_key_news_batch("week", dt)
         m = build_s3_key_news_batch("month", dt)
         y = build_s3_key_news_batch("year", dt)
+        d = build_s3_key_news_batch("day", dt)
         assert "year=2026" in w and "week=" in w
         assert "year=2026" in m and "month=02" in m
         assert "year=2026" in y and ("y2026" in y or y.endswith("y2026.csv"))
+        assert "year=2026" in d and "month=02" in d and "day=26" in d
+        assert "format=csv" in d and "y2026_m02_d26" in d
 
     def test_build_s3_key_news_batch_invalid(self):
         with pytest.raises(ValueError, match="batch_type"):
@@ -92,6 +97,94 @@ class TestS3PathBuilders:
         key = build_s3_key_stocks("eth-usd", ts)
         assert "book=eth-usd" in key
         assert "20260222" in key
+
+
+class TestGroupTransformedByPartition:
+    """Test data-date partitioning for batch uploads."""
+
+    def test_group_by_year(self):
+        df = pd.DataFrame({
+            "id": ["a", "b", "c"],
+            "datetime": ["2025-01-15T10:00:00Z", "2025-06-20T12:00:00Z", "2026-02-01T08:00:00Z"],
+        })
+        parts = list(_group_transformed_by_partition(df, "year"))
+        assert len(parts) == 2
+        years = {p[0].year for p in parts}
+        assert years == {2025, 2026}
+        assert sum(len(p[1]) for p in parts) == 3
+
+    def test_group_by_month(self):
+        df = pd.DataFrame({
+            "id": ["a", "b", "c"],
+            "datetime": ["2025-01-15T10:00:00Z", "2025-01-20T12:00:00Z", "2025-02-01T08:00:00Z"],
+        })
+        parts = list(_group_transformed_by_partition(df, "month"))
+        assert len(parts) == 2
+        months = {(p[0].year, p[0].month) for p in parts}
+        assert months == {(2025, 1), (2025, 2)}
+        assert sum(len(p[1]) for p in parts) == 3
+
+    def test_group_by_day(self):
+        df = pd.DataFrame({
+            "id": ["a", "b"],
+            "datetime": ["2025-01-15T10:00:00Z", "2025-01-15T14:00:00Z"],
+        })
+        parts = list(_group_transformed_by_partition(df, "day"))
+        assert len(parts) == 1
+        assert parts[0][0].year == 2025 and parts[0][0].month == 1 and parts[0][0].day == 15
+        assert len(parts[0][1]) == 2
+
+    def test_group_by_week(self):
+        # Two articles in same ISO week
+        df = pd.DataFrame({
+            "id": ["a", "b"],
+            "datetime": ["2025-01-06T10:00:00Z", "2025-01-10T12:00:00Z"],  # same week
+        })
+        parts = list(_group_transformed_by_partition(df, "week"))
+        assert len(parts) == 1
+        assert len(parts[0][1]) == 2
+        assert parts[0][0].year == 2025
+
+    def test_group_empty_or_no_datetime(self):
+        assert list(_group_transformed_by_partition(pd.DataFrame(), "year")) == []
+        assert list(_group_transformed_by_partition(pd.DataFrame({"id": [1]}), "month")) == []
+        assert list(_group_transformed_by_partition(pd.DataFrame({"datetime": [pd.NaT]}), "day")) == []
+
+
+class TestUploadNewsBatchesToS3:
+    """Test that batch uploads use data-date partitions (not run time) for year/month/week/day."""
+
+    def test_upload_batch_month_uses_article_date(self):
+        """Partition keys should reflect article datetime (2025), not run time."""
+        df = pd.DataFrame({
+            "id": ["art1"],
+            "datetime": ["2025-01-15T10:30:00Z"],
+            "headline": ["Test"],
+        })
+        put_keys = []
+        mock_s3 = MagicMock()
+        mock_s3.put_object = lambda **kw: put_keys.append(kw.get("Key", ""))
+
+        upload_news_batches_to_s3(mock_s3, "bucket", df, ["month"], agentic=True)
+
+        assert any("year=2025" in k and "month=01" in k for k in put_keys), put_keys
+        assert not any("year=2026" in k for k in put_keys), "Should not use run year 2026"
+
+    def test_upload_batch_run_uses_run_time(self):
+        """Run batch is a single file; path includes batch=run."""
+        df = pd.DataFrame({
+            "id": ["art1"],
+            "datetime": ["2025-01-15T10:30:00Z"],
+            "headline": ["Test"],
+        })
+        put_keys = []
+        mock_s3 = MagicMock()
+        mock_s3.put_object = lambda **kw: put_keys.append(kw.get("Key", ""))
+
+        upload_news_batches_to_s3(mock_s3, "bucket", df, ["run"], agentic=False)
+
+        assert len(put_keys) == 1
+        assert "batch=run" in put_keys[0]
 
 
 class TestAgenticResultHasFailures:

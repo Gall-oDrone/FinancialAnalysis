@@ -6,14 +6,15 @@ ETL Transform Pipeline: Transform data from Postgres, save back to Postgres, pub
 
 S3 path conventions:
   News per-article: s3://{bucket}/news/crypto/[agentic=true|false/]year=.../format=csv/{id}.csv
-  News batch:       s3://{bucket}/news/transformed/crypto/[agentic=true|false/]batch=run|year=... (run/week/month/year)
+  News batch:       s3://{bucket}/news/transformed/crypto/[agentic=true|false/]batch=run|year=... (run; year/month/week/day partitioned by article date)
   Stocks:           s3://{bucket}/stocks/crypto/book={book}/year=YYYY/month=MM/day=DD/format=csv/YYYYMMDD-{book}.csv
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import sys
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -49,7 +50,7 @@ def build_s3_key_news_per_article(
 
 
 def build_s3_key_news_batch(
-    batch_type: str,  # "run" | "week" | "month" | "year"
+    batch_type: str,  # "run" | "week" | "month" | "year" | "day"
     dt: datetime,
     suffix: str = "news_transformed",
     prefix: str = NEWS_TRANSFORMED_PREFIX,
@@ -57,6 +58,7 @@ def build_s3_key_news_batch(
 ) -> str:
     """Build S3 key for a batch transformed news CSV.
     If agentic is True/False, inserts agentic=true/ or agentic=false/ in the path.
+    For year/month/week/day, dt is the partition date (article date); for run, dt is run time.
     """
     agentic_seg = ""
     if agentic is not None:
@@ -71,7 +73,12 @@ def build_s3_key_news_batch(
         return f"{prefix}/{agentic_seg}year={dt.year}/month={dt.month:02d}/format=csv/{suffix}_y{dt.year}_m{dt.month:02d}.csv"
     if batch_type == "year":
         return f"{prefix}/{agentic_seg}year={dt.year}/format=csv/{suffix}_y{dt.year}.csv"
-    raise ValueError(f"batch_type must be one of run, week, month, year; got {batch_type}")
+    if batch_type == "day":
+        return (
+            f"{prefix}/{agentic_seg}year={dt.year}/month={dt.month:02d}/day={dt.day:02d}"
+            f"/format=csv/{suffix}_y{dt.year}_m{dt.month:02d}_d{dt.day:02d}.csv"
+        )
+    raise ValueError(f"batch_type must be one of run, week, month, year, day; got {batch_type}")
 
 
 def build_s3_key_stocks(
@@ -286,6 +293,74 @@ def upload_dataframe_to_s3_key(
     )
 
 
+# Batch types that are partitioned by article (data) date; "run" uses run time.
+_DATA_PARTITION_BATCH_TYPES = ("year", "month", "week", "day")
+
+
+def upload_news_batches_to_s3(
+    s3_client,
+    bucket: str,
+    transformed_df: pd.DataFrame,
+    batch_types: List[str],
+    agentic: Optional[bool] = None,
+) -> None:
+    """Upload batch CSVs: one run file (by run time) and/or one file per partition (by article date)."""
+    now = datetime.utcnow()
+    for batch_type in batch_types:
+        if batch_type == "run":
+            key = build_s3_key_news_batch("run", now, agentic=agentic)
+            upload_dataframe_to_s3_key(s3_client, bucket, key, transformed_df)
+            logger.info("Uploaded batch run to s3://%s/%s", bucket, key)
+        elif batch_type in _DATA_PARTITION_BATCH_TYPES:
+            for part_dt, sub_df in _group_transformed_by_partition(transformed_df, batch_type):
+                key = build_s3_key_news_batch(batch_type, part_dt, agentic=agentic)
+                upload_dataframe_to_s3_key(s3_client, bucket, key, sub_df)
+                logger.info("Uploaded batch %s (partition %s) to s3://%s/%s", batch_type, part_dt.date(), bucket, key)
+        else:
+            logger.warning("Unknown batch_type %s; skipping", batch_type)
+
+
+def _group_transformed_by_partition(
+    transformed_df: pd.DataFrame,
+    batch_type: str,
+):
+    """Yield (partition_dt, sub_df) for each partition. batch_type in ('year','month','week','day').
+    Partition is derived from article datetime (when the article was issued).
+    """
+    if batch_type not in _DATA_PARTITION_BATCH_TYPES or transformed_df.empty:
+        return
+    if "datetime" not in transformed_df.columns:
+        return
+    dt = pd.to_datetime(transformed_df["datetime"], errors="coerce")
+    valid = dt.notna()
+    if not valid.any():
+        return
+    subset = transformed_df.loc[valid]
+    d = dt.loc[valid]
+    if batch_type == "year":
+        for year, group in subset.groupby(d.dt.year):
+            yield datetime(int(year), 1, 1), group
+    elif batch_type == "month":
+        for (year, month), group in subset.groupby([d.dt.year, d.dt.month]):
+            yield datetime(int(year), int(month), 1), group
+    elif batch_type == "week":
+        cal = d.dt.isocalendar()
+        for (iso_year, week), group in subset.groupby([cal["year"], cal["week"]]):
+            # Monday of the given ISO year/week (fromisocalendar in 3.8+)
+            if sys.version_info >= (3, 8):
+                part_dt = datetime.fromisocalendar(int(iso_year), int(week), 1)
+            else:
+                jan4 = date(int(iso_year), 1, 4)
+                week1_monday = jan4 - timedelta(days=jan4.isoweekday() - 1)
+                part_dt = datetime.combine(
+                    week1_monday + timedelta(weeks=int(week) - 1), datetime.min.time()
+                )
+            yield part_dt, group
+    elif batch_type == "day":
+        for (year, month, day), group in subset.groupby([d.dt.year, d.dt.month, d.dt.day]):
+            yield datetime(int(year), int(month), int(day)), group
+
+
 def run_news_etl(
     since: Optional[str] = None,
     until: Optional[str] = None,
@@ -305,7 +380,7 @@ def run_news_etl(
     optionally save to financial_news_transformed, then upload to S3.
 
     When agentic_enabled is True, llm_* columns are persisted and S3 paths include agentic=true/.
-    S3: per-article keys and/or batch keys (run, week, month, year) under news bucket.
+    S3: per-article keys and/or batch keys (run; year/month/week/day partitioned by article date) under news bucket.
     """
     from config.settings import get_settings
     from storage.postgres.pgConn import PgConn
@@ -354,11 +429,9 @@ def run_news_etl(
                 upload_dataframe_to_s3_key(aws.s3_client, bucket, key, one)
             logger.info("Uploaded %d per-article CSVs to s3://%s/", len(transformed), bucket)
         if upload_s3_batch:
-            now = datetime.utcnow()
-            for batch_type in upload_s3_batch:
-                key = build_s3_key_news_batch(batch_type, now, agentic=agentic_enabled)
-                upload_dataframe_to_s3_key(aws.s3_client, bucket, key, transformed)
-                logger.info("Uploaded batch %s to s3://%s/%s", batch_type, bucket, key)
+            upload_news_batches_to_s3(
+                aws.s3_client, bucket, transformed, upload_s3_batch, agentic=agentic_enabled
+            )
 
     return transformed
 

@@ -191,6 +191,18 @@ class TestBuildS3Keys:
         assert "s3_key" in out
         assert "batch=run" in out["s3_key"]
 
+    def test_build_s3_key_news_batch_day(self):
+        from agents.tools import run_tool
+
+        out = run_tool("build_s3_key_news", {
+            "batch_type": "day",
+            "datetime_str": "2025-01-15T10:30:00",
+        })
+        assert "s3_key" in out
+        assert "year=2025" in out["s3_key"]
+        assert "month=01" in out["s3_key"]
+        assert "day=15" in out["s3_key"]
+
     def test_build_s3_key_stocks(self):
         from agents.tools import run_tool
 

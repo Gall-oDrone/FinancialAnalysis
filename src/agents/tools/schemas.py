@@ -151,8 +151,8 @@ BUILD_S3_KEY_NEWS_SCHEMA = {
             },
             "batch_type": {
                 "type": "string",
-                "description": "If building batch key: 'run', 'week', 'month', or 'year'. Omit for per-article.",
-                "enum": ["run", "week", "month", "year"],
+                "description": "If building batch key: 'run', 'week', 'month', 'year', or 'day'. Omit for per-article.",
+                "enum": ["run", "week", "month", "year", "day"],
             },
             "agentic": {
                 "type": "boolean",
