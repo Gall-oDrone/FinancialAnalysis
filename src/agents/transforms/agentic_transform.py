@@ -11,6 +11,7 @@ separate pipeline stage. OOP: depends on LLMClient interface only.
 """
 
 from abc import ABC, abstractmethod
+import ast
 import json
 import re
 from dataclasses import dataclass, field
@@ -218,33 +219,82 @@ class FinancialMetricsTask(EnrichmentTask):
             "}"
         )
 
+    def _fix_trailing_commas(self, raw: str) -> str:
+        """Remove trailing commas before } or ] so strict JSON parser accepts."""
+        # Remove comma before } or ]
+        s = re.sub(r",(\s*})", r"\1", raw)
+        s = re.sub(r",(\s*])", r"\1", s)
+        return s
+
     def _extract_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON from response, tolerating markdown code blocks."""
+        """Extract JSON from response, tolerating markdown, trailing commas, and extra text."""
         text = content.strip()
         # Remove optional markdown code fence
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
         if match:
             text = match.group(1).strip()
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            # Try to find first { ... } block
-            brace = text.find("{")
-            if brace != -1:
-                depth = 0
-                end = brace
-                for i, c in enumerate(text[brace:], start=brace):
-                    if c == "{":
-                        depth += 1
-                    elif c == "}":
-                        depth -= 1
-                        if depth == 0:
-                            end = i
-                            break
-                try:
-                    return json.loads(text[brace : end + 1])
-                except json.JSONDecodeError:
-                    pass
+        for candidate in (text, self._fix_trailing_commas(text)):
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+        # Find first { and matching }, skipping braces inside double-quoted strings
+        brace = text.find("{")
+        if brace == -1:
+            return None
+        depth = 0
+        i = brace
+        in_string = False
+        escape = False
+        quote_char = None
+        end = brace
+        while i < len(text):
+            c = text[i]
+            if escape:
+                escape = False
+                i += 1
+                continue
+            if c == "\\" and in_string:
+                escape = True
+                i += 1
+                continue
+            if in_string:
+                if c == quote_char:
+                    in_string = False
+                i += 1
+                continue
+            if c in ('"', "'"):
+                in_string = True
+                quote_char = c
+                i += 1
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+            i += 1
+        if depth != 0:
+            # Truncated response: use rest of text and try closing unclosed braces
+            end = len(text) - 1
+        raw = text[brace : end + 1]
+        if depth != 0:
+            raw = raw + "}" * depth
+        for candidate in (raw, self._fix_trailing_commas(raw)):
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+        # Fallback: single-quoted Python dict (some models return {'key': 'val'})
+        for candidate in (raw, self._fix_trailing_commas(raw)):
+            try:
+                parsed = ast.literal_eval(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, SyntaxError):
+                pass
         return None
 
     def _clamp_score(self, v: Any) -> Optional[float]:
@@ -448,17 +498,18 @@ class AgenticTextEnricher:
             to_process = min(to_process, max_rows)
         for idx in range(to_process):
             row = df.iloc[idx]
+            row_ix = out.index[idx]  # use index label for .at (handles list/dict values)
             try:
                 parsed = self.enrich_row(row)
                 for key, value in parsed.items():
                     if key not in out.columns:
                         out[key] = None
-                    out.iloc[idx, out.columns.get_loc(key)] = value
+                    out.at[row_ix, key] = value
             except Exception as e:
                 if self.skip_on_error:
                     if "llm_error" not in out.columns:
                         out["llm_error"] = None
-                    out.iloc[idx, out.columns.get_loc("llm_error")] = str(e)
+                    out.at[row_ix, "llm_error"] = str(e)
                 else:
                     raise
         return out

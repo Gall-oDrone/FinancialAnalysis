@@ -184,6 +184,15 @@ class TestFinancialMetricsTask:
         assert out["llm_financial_metrics"]["event_type"] == "regulation"
         assert out["llm_financial_metrics"]["ticker"] == "ETH"
 
+    def test_parse_response_trailing_comma_and_extra_text(self, task):
+        # LLMs sometimes return trailing commas or text before/after JSON
+        raw = 'Here is the analysis:\n{"ticker": "BTC", "event_type": "other", "overall_sentiment": 0.2, "confidence": 0.9,}\n'
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"] is not None
+        assert out["llm_financial_metrics"]["ticker"] == "BTC"
+        assert out["llm_financial_metrics"]["confidence"] == 0.9
+
     def test_parse_response_invalid_json_returns_error_key(self, task):
         out = task.parse_response("not valid json at all")
         assert "llm_financial_metrics" in out
