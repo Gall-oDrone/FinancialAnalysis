@@ -230,22 +230,52 @@ class FinancialMetricsTask(EnrichmentTask):
         """Replace literal newline/carriage return with space so broken LLM JSON may parse."""
         return raw.replace("\n", " ").replace("\r", " ")
 
+    def _strip_control_chars(self, raw: str) -> str:
+        """Remove or replace control characters that break JSON (e.g. \\x00, \\x1b)."""
+        return "".join(
+            c if (ord(c) >= 32 or c in "\n\r\t") else " "
+            for c in raw
+        )
+
+    def _repair_truncated_json(self, raw: str) -> str:
+        """If JSON looks truncated (unclosed braces/brackets), try closing it."""
+        if not raw or not raw.strip():
+            return raw
+        s = raw.strip()
+        open_braces = s.count("{") - s.count("}")
+        open_brackets = s.count("[") - s.count("]")
+        # If we're inside a string at the end, don't append blindly
+        if open_braces > 0 or open_brackets > 0:
+            # Close in reverse order: last unclosed [ then {
+            suffix = "]" * open_brackets + "}" * open_braces
+            s = s.rstrip()
+            if s.endswith(","):
+                s = s[:-1]
+            s = s + suffix
+        return s
+
     def _try_parse_candidates(self, *candidates: str) -> Optional[Dict[str, Any]]:
-        """Try json.loads, trailing-comma fix, newline normalize, and literal_eval on each candidate."""
+        """Try json.loads, trailing-comma fix, newline normalize, control-char strip, truncation repair, and literal_eval."""
         for raw in candidates:
             if not raw or not raw.strip():
                 continue
-            for value in (raw, self._fix_trailing_commas(raw)):
-                try:
-                    return json.loads(value)
-                except json.JSONDecodeError:
-                    pass
-            for value in (raw, self._fix_trailing_commas(raw)):
-                normalized = self._normalize_newlines_in_json_string(value)
-                try:
-                    return json.loads(normalized)
-                except json.JSONDecodeError:
-                    pass
+            # Build variants: original, strip control chars, normalize newlines, repair truncated
+            variants = [
+                raw,
+                self._strip_control_chars(raw),
+                self._normalize_newlines_in_json_string(raw),
+                self._normalize_newlines_in_json_string(self._strip_control_chars(raw)),
+                self._repair_truncated_json(raw),
+                self._repair_truncated_json(self._strip_control_chars(raw)),
+            ]
+            for value in variants:
+                if not value or not value.strip():
+                    continue
+                for v in (value, self._fix_trailing_commas(value)):
+                    try:
+                        return json.loads(v)
+                    except json.JSONDecodeError:
+                        pass
             for value in (raw, self._fix_trailing_commas(raw)):
                 try:
                     parsed = ast.literal_eval(value)
@@ -270,8 +300,20 @@ class FinancialMetricsTask(EnrichmentTask):
         result = self._try_parse_candidates(text)
         if result is not None:
             return result
+        # Sanitize and retry (control chars / truncated) on full text
+        sanitized = self._strip_control_chars(text)
+        if sanitized != text:
+            result = self._try_parse_candidates(sanitized)
+            if result is not None:
+                return result
+        repaired = self._repair_truncated_json(sanitized if sanitized else text)
+        if repaired != text:
+            result = self._try_parse_candidates(repaired)
+            if result is not None:
+                return result
         # Find first { and matching }, skipping braces inside quoted strings
-        brace = text.find("{")
+        work = sanitized if sanitized else text
+        brace = work.find("{")
         if brace == -1:
             return None
         depth = 0
@@ -280,8 +322,8 @@ class FinancialMetricsTask(EnrichmentTask):
         escape = False
         quote_char = None
         end = brace
-        while i < len(text):
-            c = text[i]
+        while i < len(work):
+            c = work[i]
             if escape:
                 escape = False
                 i += 1
@@ -309,17 +351,17 @@ class FinancialMetricsTask(EnrichmentTask):
                     break
             i += 1
         if depth != 0:
-            end = len(text) - 1
-        raw = text[brace : end + 1]
+            end = len(work) - 1
+        raw = work[brace : end + 1]
         if depth != 0:
             raw = raw + "}" * depth
         result = self._try_parse_candidates(raw)
         if result is not None:
             return result
         # Try from first { to last } (handles trailing prose or wrong brace match)
-        last_brace = text.rfind("}")
+        last_brace = work.rfind("}")
         if last_brace != -1 and last_brace > brace:
-            raw_tail = text[brace : last_brace + 1]
+            raw_tail = work[brace : last_brace + 1]
             result = self._try_parse_candidates(raw_tail)
             if result is not None:
                 return result

@@ -78,14 +78,13 @@ class TestS3PathBuilders:
         assert "year=2026" in d and "month=02" in d and "day=26" in d
         assert "format=csv" in d and "y2026_m02_d26" in d
 
-    def test_build_s3_key_news_batch_week_uses_iso_year(self):
-        # Monday of ISO 2025 week 1 is 2024-12-30; path must be year=2025/week=01
-        monday_week1_2025 = datetime(2024, 12, 30)
-        key = build_s3_key_news_batch("week", monday_week1_2025)
-        assert "year=2025" in key
-        assert "week=01" in key
-        assert "y2025_w01" in key
-        assert "2024" not in key
+    def test_build_s3_key_news_batch_week_uses_calendar_year(self):
+        # 2024-12-30 and 2024-12-31 are in calendar 2024 (not ISO 2025); path must be year=2024
+        dec30_2024 = datetime(2024, 12, 30)
+        key = build_s3_key_news_batch("week", dec30_2024)
+        assert "year=2024" in key
+        assert "y2024_w" in key
+        assert "2025" not in key
 
     def test_build_s3_key_news_batch_invalid(self):
         with pytest.raises(ValueError, match="batch_type"):
@@ -144,7 +143,7 @@ class TestGroupTransformedByPartition:
         assert len(parts[0][1]) == 2
 
     def test_group_by_week(self):
-        # Two articles in same ISO week
+        # Two articles in same week (calendar year)
         df = pd.DataFrame({
             "id": ["a", "b"],
             "datetime": ["2025-01-06T10:00:00Z", "2025-01-10T12:00:00Z"],  # same week
@@ -153,6 +152,20 @@ class TestGroupTransformedByPartition:
         assert len(parts) == 1
         assert len(parts[0][1]) == 2
         assert parts[0][0].year == 2025
+
+    def test_group_by_week_calendar_year_dec_30_31(self):
+        # 2024-12-30 and 2024-12-31 must partition as 2024 (y2024_w*), not 2025
+        df = pd.DataFrame({
+            "id": ["a", "b"],
+            "datetime": ["2024-12-30T10:00:00Z", "2024-12-31T12:00:00Z"],
+        })
+        parts = list(_group_transformed_by_partition(df, "week"))
+        assert len(parts) == 1
+        assert len(parts[0][1]) == 2
+        assert parts[0][0].year == 2024
+        key = build_s3_key_news_batch("week", parts[0][0])
+        assert "y2024_w" in key
+        assert "2025" not in key
 
     def test_group_empty_or_no_datetime(self):
         assert list(_group_transformed_by_partition(pd.DataFrame(), "year")) == []

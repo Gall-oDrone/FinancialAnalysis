@@ -309,6 +309,53 @@ class TestFinancialMetricsTask:
         assert "bullish" in SIGNALS and "bearish" in SIGNALS
         assert "crypto" in SECTORS and "DeFi" in SECTORS and "other" in SECTORS
 
+    # --- Tests for the 3 articles that failed with "Failed to parse JSON from response" (by id/headline) ---
+
+    @pytest.mark.parametrize(
+        "article_id,headline",
+        [
+            (
+                "128760326000617418605525084146200490339",
+                "Bitcoin surpasses $107,000 to hit new high amid 'relentless'...",
+            ),
+            (
+                "150476629987280880526515602205867776431",
+                "Here's how bitcoin could hit $225,000: Analyst Mark ...",
+            ),
+            (
+                "153078721426213179978784704911365399202",
+                "Trump appoints Bo Hines, an ex-college football player, to p...",
+            ),
+        ],
+    )
+    def test_parse_response_three_articles_with_llm_error(self, task, article_id, headline):
+        """Parse valid JSON for the 3 articles that had llm_error 'Failed to parse JSON from response'."""
+        payload = {
+            "ticker": "BTC",
+            "event_type": "macro",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.3,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.8,
+            "sentiment_label": "neutral",
+            "impact_level": "medium",
+            "signal": "neutral",
+            "actionable": False,
+            "sectors": ["crypto", "macro"],
+            "entities": [],
+            "key_facts": [],
+        }
+        raw = json.dumps(payload)
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None, f"Expected no llm_error for id={article_id!r} headline={headline!r}"
+        assert out["llm_financial_metrics"] is not None
+        assert out["llm_financial_metrics"]["ticker"] == "BTC"
+
     # --- Tests for the 5 articles that previously failed with "Failed to parse JSON from response" ---
 
     @pytest.mark.parametrize(
@@ -409,6 +456,67 @@ class TestFinancialMetricsTask:
         assert out.get("llm_error") is None
         assert out["llm_financial_metrics"]["ticker"] == "BTC"
         assert out["llm_financial_metrics"]["confidence"] == 0.9
+
+    def test_parse_response_control_char_inside_json(self, task):
+        """JSON with control character (e.g. \\x00) is stripped and parses."""
+        payload = {
+            "ticker": "BTC",
+            "event_type": "other",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.0,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.8,
+            "sentiment_label": "neutral",
+            "impact_level": "medium",
+            "signal": "neutral",
+            "actionable": False,
+            "sectors": [],
+            "entities": [],
+            "key_facts": [],
+        }
+        raw = json.dumps(payload)
+        # Insert control char that breaks strict JSON
+        raw_bad = raw[:30] + "\x00" + raw[30:]
+        out = task.parse_response(raw_bad)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"] is not None
+        assert out["llm_financial_metrics"]["ticker"] == "BTC"
+
+    def test_parse_response_truncated_json_missing_closing_brace(self, task):
+        """Truncated JSON missing closing brace is repaired and parses."""
+        payload = {
+            "ticker": "BTC",
+            "event_type": "macro",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.3,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.9,
+            "sentiment_label": "neutral",
+            "impact_level": "medium",
+            "signal": "neutral",
+            "actionable": False,
+            "sectors": ["crypto"],
+            "entities": [],
+            "key_facts": [],
+        }
+        raw = json.dumps(payload)
+        truncated = raw.rstrip()
+        if truncated.endswith("}"):
+            truncated = truncated[:-1]
+        out = task.parse_response(truncated)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"] is not None
+        assert out["llm_financial_metrics"]["ticker"] == "BTC"
 
 
 class TestSummaryAndThemesTask:

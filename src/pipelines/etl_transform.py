@@ -67,10 +67,9 @@ def build_s3_key_news_batch(
         ts = dt.strftime("%Y%m%d_%H%M%S")
         return f"{prefix}/{agentic_seg}batch=run/format=csv/{suffix}_{ts}.csv"
     if batch_type == "week":
-        iso = dt.isocalendar()
-        # Use ISO year (iso[0]), not dt.year: week 1 of 2025 has Monday in Dec 2024
-        iso_year, iso_week = iso[0], iso[1]
-        return f"{prefix}/{agentic_seg}year={iso_year}/week={iso_week:02d}/format=csv/{suffix}_y{iso_year}_w{iso_week:02d}.csv"
+        # Use calendar year and Monday-based week (0-53) so 2024-12-30/31 → y2024_w52, not y2025_w01
+        week_num = int(dt.strftime("%W"))
+        return f"{prefix}/{agentic_seg}year={dt.year}/week={week_num:02d}/format=csv/{suffix}_y{dt.year}_w{week_num:02d}.csv"
     if batch_type == "month":
         return f"{prefix}/{agentic_seg}year={dt.year}/month={dt.month:02d}/format=csv/{suffix}_y{dt.year}_m{dt.month:02d}.csv"
     if batch_type == "year":
@@ -347,17 +346,14 @@ def _group_transformed_by_partition(
         for (year, month), group in subset.groupby([d.dt.year, d.dt.month]):
             yield datetime(int(year), int(month), 1), group
     elif batch_type == "week":
-        cal = d.dt.isocalendar()
-        for (iso_year, week), group in subset.groupby([cal["year"], cal["week"]]):
-            # Monday of the given ISO year/week (fromisocalendar in 3.8+)
-            if sys.version_info >= (3, 8):
-                part_dt = datetime.fromisocalendar(int(iso_year), int(week), 1)
+        # Group by calendar year and Monday-based week (0-53) so 2024-12-30/31 stay in 2024
+        week_num = d.dt.strftime("%W").astype(int)
+        for (year, week), group in subset.groupby([d.dt.year, week_num]):
+            part_dt = pd.to_datetime(group["datetime"], errors="coerce").min()
+            if pd.isna(part_dt):
+                part_dt = datetime(int(year), 1, 1)
             else:
-                jan4 = date(int(iso_year), 1, 4)
-                week1_monday = jan4 - timedelta(days=jan4.isoweekday() - 1)
-                part_dt = datetime.combine(
-                    week1_monday + timedelta(weeks=int(week) - 1), datetime.min.time()
-                )
+                part_dt = part_dt.to_pydatetime() if hasattr(part_dt, "to_pydatetime") else part_dt
             yield part_dt, group
     elif batch_type == "day":
         for (year, month, day), group in subset.groupby([d.dt.year, d.dt.month, d.dt.day]):
