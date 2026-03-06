@@ -496,6 +496,8 @@ class AgenticTextEnricher:
         to_process = len(df)
         if max_rows is not None:
             to_process = min(to_process, max_rows)
+        progress_interval = max(1, to_process // 20)  # print ~20 times over the run
+        print(f"Agentic enrichment: processing {to_process} rows (progress every {progress_interval} rows)")
         for idx in range(to_process):
             row = df.iloc[idx]
             row_ix = out.index[idx]  # use index label for .at (handles list/dict values)
@@ -512,6 +514,9 @@ class AgenticTextEnricher:
                     out.at[row_ix, "llm_error"] = str(e)
                 else:
                     raise
+            if (idx + 1) % progress_interval == 0 or (idx + 1) == to_process:
+                print(f"  progress: {idx + 1}/{to_process} rows")
+        print(f"Agentic enrichment done: {to_process} rows")
         return out
 
 
