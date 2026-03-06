@@ -197,7 +197,7 @@ class TestUploadNewsBatchesToS3:
 
 
 class TestAgenticResultHasFailures:
-    """Test agentic_result_has_failures: do not persist when any row has llm_error."""
+    """Test agentic_result_has_failures: returns True when any row has llm_error (for reporting/filtering)."""
 
     def test_empty_dataframe(self):
         assert agentic_result_has_failures(pd.DataFrame()) is False

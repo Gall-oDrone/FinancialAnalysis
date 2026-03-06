@@ -145,7 +145,8 @@ def _ensure_stocks_processed_table(pg_conn) -> None:
 def agentic_result_has_failures(transformed_df: pd.DataFrame) -> bool:
     """
     Return True if the agentic enrichment produced any per-row errors (llm_error set).
-    Call this before saving/uploading agentic results: if True, do not persist to DB or S3.
+    Use for reporting or filtering; all rows (including those with llm_error) are
+    typically saved so partial results are not lost.
     """
     if transformed_df is None or transformed_df.empty:
         return False

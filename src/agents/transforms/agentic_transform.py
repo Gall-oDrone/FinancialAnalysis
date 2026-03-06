@@ -226,19 +226,51 @@ class FinancialMetricsTask(EnrichmentTask):
         s = re.sub(r",(\s*])", r"\1", s)
         return s
 
+    def _normalize_newlines_in_json_string(self, raw: str) -> str:
+        """Replace literal newline/carriage return with space so broken LLM JSON may parse."""
+        return raw.replace("\n", " ").replace("\r", " ")
+
+    def _try_parse_candidates(self, *candidates: str) -> Optional[Dict[str, Any]]:
+        """Try json.loads, trailing-comma fix, newline normalize, and literal_eval on each candidate."""
+        for raw in candidates:
+            if not raw or not raw.strip():
+                continue
+            for value in (raw, self._fix_trailing_commas(raw)):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    pass
+            for value in (raw, self._fix_trailing_commas(raw)):
+                normalized = self._normalize_newlines_in_json_string(value)
+                try:
+                    return json.loads(normalized)
+                except json.JSONDecodeError:
+                    pass
+            for value in (raw, self._fix_trailing_commas(raw)):
+                try:
+                    parsed = ast.literal_eval(value)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except (ValueError, SyntaxError):
+                    pass
+        return None
+
     def _extract_json(self, content: str) -> Optional[Dict[str, Any]]:
         """Extract JSON from response, tolerating markdown, trailing commas, and extra text."""
-        text = content.strip()
-        # Remove optional markdown code fence
+        text = (content or "").strip()
+        if not text:
+            return None
+        # Try markdown code fence block and full text
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
         if match:
-            text = match.group(1).strip()
-        for candidate in (text, self._fix_trailing_commas(text)):
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                pass
-        # Find first { and matching }, skipping braces inside double-quoted strings
+            block = match.group(1).strip()
+            result = self._try_parse_candidates(block, text)
+            if result is not None:
+                return result
+        result = self._try_parse_candidates(text)
+        if result is not None:
+            return result
+        # Find first { and matching }, skipping braces inside quoted strings
         brace = text.find("{")
         if brace == -1:
             return None
@@ -277,24 +309,20 @@ class FinancialMetricsTask(EnrichmentTask):
                     break
             i += 1
         if depth != 0:
-            # Truncated response: use rest of text and try closing unclosed braces
             end = len(text) - 1
         raw = text[brace : end + 1]
         if depth != 0:
             raw = raw + "}" * depth
-        for candidate in (raw, self._fix_trailing_commas(raw)):
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                pass
-        # Fallback: single-quoted Python dict (some models return {'key': 'val'})
-        for candidate in (raw, self._fix_trailing_commas(raw)):
-            try:
-                parsed = ast.literal_eval(candidate)
-                if isinstance(parsed, dict):
-                    return parsed
-            except (ValueError, SyntaxError):
-                pass
+        result = self._try_parse_candidates(raw)
+        if result is not None:
+            return result
+        # Try from first { to last } (handles trailing prose or wrong brace match)
+        last_brace = text.rfind("}")
+        if last_brace != -1 and last_brace > brace:
+            raw_tail = text[brace : last_brace + 1]
+            result = self._try_parse_candidates(raw_tail)
+            if result is not None:
+                return result
         return None
 
     def _clamp_score(self, v: Any) -> Optional[float]:
@@ -360,6 +388,13 @@ class FinancialMetricsTask(EnrichmentTask):
         out: Dict[str, Any] = {}
         obj = self._extract_json(content)
         if not obj:
+            # Log raw response tail for debugging (avoid huge logs)
+            sample = (content or "").strip()[-800:] if content else ""
+            logger.warning(
+                "FinancialMetricsTask: failed to parse JSON from response (length=%s). Tail: %s",
+                len(content or ""),
+                sample if len(sample) < 800 else sample[:400] + " ... " + sample[-400:],
+            )
             return {
                 "llm_financial_metrics": None,
                 "llm_entities": [],
@@ -463,7 +498,7 @@ class AgenticTextEnricher:
         self.skip_on_error = skip_on_error
 
     def enrich_row(self, row: pd.Series) -> Dict[str, Any]:
-        """Enrich a single row; returns dict to merge."""
+        """Enrich a single row; returns dict to merge. Retries once on JSON parse failure."""
         try:
             prompt = self.task.build_prompt(row)
             messages = [LLMMessage(role="user", content=prompt)]
@@ -473,7 +508,15 @@ class AgenticTextEnricher:
                     LLMMessage(role="system", content=self.task.system_prompt),
                 )
             response = self.client.complete(messages)
-            return self.task.parse_response(response.content)
+            parsed = self.task.parse_response(response.content)
+            # Retry once if the only failure was JSON parse (transient model output)
+            if (
+                parsed.get("llm_error") == "Failed to parse JSON from response"
+                and self.skip_on_error
+            ):
+                response2 = self.client.complete(messages)
+                parsed = self.task.parse_response(response2.content)
+            return parsed
         except Exception as e:
             logger.warning("Agentic enrich failed for row: %s", e)
             if self.skip_on_error:

@@ -309,6 +309,107 @@ class TestFinancialMetricsTask:
         assert "bullish" in SIGNALS and "bearish" in SIGNALS
         assert "crypto" in SECTORS and "DeFi" in SECTORS and "other" in SECTORS
 
+    # --- Tests for the 5 articles that previously failed with "Failed to parse JSON from response" ---
+
+    @pytest.mark.parametrize(
+        "headline",
+        [
+            "Fed's preferred inflation gauge highlights holiday-shortened week",
+            "Here's how bitcoin could hit $225,000: Analyst Mark",
+            "MicroStrategy Buys Another $2.1 Billion Worth of Bitcoin",
+            "Stock market today: Wall Street rises with Nvidia as bitcoin",
+            "Trump appoints Bo Hines, an ex-college football player, to advisory board",
+        ],
+    )
+    def test_parse_response_five_formerly_failing_articles(self, task, headline):
+        """Parse valid JSON for the 5 articles that previously got llm_error (no parse failure)."""
+        payload = {
+            "ticker": "BTC",
+            "event_type": "macro",
+            "overall_sentiment": 0.0,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.3,
+            "immediacy": 0.0,
+            "impact_horizon": "short_term",
+            "confidence": 0.8,
+            "sentiment_label": "neutral",
+            "impact_level": "medium",
+            "signal": "neutral",
+            "actionable": False,
+            "sectors": ["crypto", "macro"],
+            "entities": [],
+            "key_facts": [],
+        }
+        raw = json.dumps(payload)
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None, f"Expected no llm_error for headline: {headline!r}"
+        assert out["llm_financial_metrics"] is not None
+        assert out["llm_financial_metrics"]["ticker"] == "BTC"
+
+    def test_parse_response_json_with_literal_newline_in_string(self, task):
+        """LLM sometimes returns unescaped newlines inside string values; parser normalizes and parses."""
+        # Invalid JSON: newline inside "key_facts" string
+        raw = (
+            '{"ticker": "BTC", "event_type": "other", "overall_sentiment": 0.0, '
+            '"forward_sentiment": 0.0, "surprise_score": 0.0, "risk_score": 0.0, '
+            '"uncertainty_score": 0.0, "impact_strength": 0.0, "immediacy": 0.0, '
+            '"impact_horizon": "short_term", "confidence": 0.8, "sentiment_label": "neutral", '
+            '"impact_level": "medium", "signal": "neutral", "actionable": false, '
+            '"sectors": [], "entities": [], "key_facts": ["Fact with\nnewline"]}'
+        )
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"] is not None
+        assert "Fact with" in (out["llm_financial_metrics"].get("key_facts") or [""])[0]
+
+    def test_parse_response_trailing_prose_after_closing_brace(self, task):
+        """Response with text after the JSON closing brace; parser uses first { to last }."""
+        payload = {
+            "ticker": "ETH",
+            "event_type": "regulation",
+            "overall_sentiment": -0.1,
+            "forward_sentiment": 0.0,
+            "surprise_score": 0.0,
+            "risk_score": 0.0,
+            "uncertainty_score": 0.0,
+            "impact_strength": 0.2,
+            "immediacy": 0.0,
+            "impact_horizon": "medium_term",
+            "confidence": 0.7,
+            "sentiment_label": "neutral",
+            "impact_level": "medium",
+            "signal": "neutral",
+            "actionable": False,
+            "sectors": ["crypto"],
+            "entities": [],
+            "key_facts": [],
+        }
+        raw = json.dumps(payload) + "\n\nHope this analysis helps. Let me know if you need more."
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"] is not None
+        assert out["llm_financial_metrics"]["ticker"] == "ETH"
+        assert out["llm_financial_metrics"]["event_type"] == "regulation"
+
+    def test_parse_response_leading_prose_and_trailing_comma(self, task):
+        """Leading prose + trailing comma (simulates real LLM output)."""
+        raw = (
+            "Here is the analysis:\n"
+            '{"ticker": "BTC", "event_type": "macro", "overall_sentiment": 0.2, '
+            '"forward_sentiment": 0.0, "surprise_score": 0.0, "risk_score": 0.0, '
+            '"uncertainty_score": 0.0, "impact_strength": 0.4, "immediacy": 0.0, '
+            '"impact_horizon": "short_term", "confidence": 0.9, "sentiment_label": "positive", '
+            '"impact_level": "medium", "signal": "neutral", "actionable": false, '
+            '"sectors": ["crypto"], "entities": [], "key_facts": [],}'
+        )
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"]["ticker"] == "BTC"
+        assert out["llm_financial_metrics"]["confidence"] == 0.9
+
 
 class TestSummaryAndThemesTask:
     """Smoke tests for default SummaryAndThemesTask."""
