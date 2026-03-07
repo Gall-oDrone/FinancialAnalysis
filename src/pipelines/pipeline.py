@@ -303,14 +303,8 @@ class UploadTransformedStageHandler(PipelineStageHandler):
         file_name = f"news_transformed_{timestamp}"
         
         try:
-            # Convert complex columns to JSON strings for CSV storage
-            df_export = data.copy()
-            for col in ['keywords', 'entities', 'secondary_intents', 'llm_themes', 'llm_entities']:
-                if col in df_export.columns:
-                    df_export[col] = df_export[col].apply(
-                        lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x
-                    )
-            
+            from pipelines.etl_transform import _prepare_news_dataframe_for_csv
+            df_export = _prepare_news_dataframe_for_csv(data)
             aws.upload_dataframe_to_csv(
                 dataframe=df_export,
                 bucket_name=config.s3_bucket,

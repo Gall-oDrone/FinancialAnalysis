@@ -18,6 +18,7 @@ from pipelines.etl_transform import (
     build_s3_key_news_batch,
     build_s3_key_stocks,
     _serialize_row_for_news_db,
+    _prepare_news_dataframe_for_csv,
     _group_transformed_by_partition,
     upload_news_batches_to_s3,
     agentic_result_has_failures,
@@ -171,6 +172,46 @@ class TestGroupTransformedByPartition:
         assert list(_group_transformed_by_partition(pd.DataFrame(), "year")) == []
         assert list(_group_transformed_by_partition(pd.DataFrame({"id": [1]}), "month")) == []
         assert list(_group_transformed_by_partition(pd.DataFrame({"datetime": [pd.NaT]}), "day")) == []
+
+
+class TestPrepareNewsDataframeForCsv:
+    """Test CSV-safe export: one logical row per physical line, no header misalignment."""
+
+    def test_newlines_replaced_in_string_columns(self):
+        df = pd.DataFrame({
+            "id": ["a"],
+            "headline": ["Line one\nLine two"],
+            "content": ["No newline"],
+        })
+        out = _prepare_news_dataframe_for_csv(df)
+        assert "\n" not in out["headline"].iloc[0]
+        assert " " in out["headline"].iloc[0]
+        assert out["content"].iloc[0] == "No newline"
+
+    def test_list_dict_columns_serialized_to_json(self):
+        df = pd.DataFrame({
+            "id": ["a"],
+            "llm_sectors": [["crypto", "macro"]],
+            "llm_key_facts": [["fact1"]],
+        })
+        out = _prepare_news_dataframe_for_csv(df)
+        assert out["llm_sectors"].iloc[0] == '["crypto","macro"]'
+        assert "fact1" in out["llm_key_facts"].iloc[0]
+
+    def test_csv_one_line_per_row(self):
+        df = pd.DataFrame({
+            "id": ["id1", "id2"],
+            "headline": ["H1\nwith newline", "H2"],
+        })
+        out = _prepare_news_dataframe_for_csv(df)
+        from io import StringIO
+        buf = StringIO()
+        out.to_csv(buf, index=False)
+        lines = buf.getvalue().strip().split("\n")
+        assert len(lines) == 3, "Header + 2 data rows"
+        assert lines[0].startswith("id,")
+        assert lines[1].startswith("id1,")
+        assert lines[2].startswith("id2,")
 
 
 class TestUploadNewsBatchesToS3:

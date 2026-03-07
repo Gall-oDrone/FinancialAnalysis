@@ -325,11 +325,14 @@ def transform_news(
     
     logger.info(f"Transformation complete: {len(transformed)} records")
     
-    # Save output
+    from pipelines.etl_transform import _prepare_news_dataframe_for_csv
+    df_for_csv = _prepare_news_dataframe_for_csv(transformed)
+    
+    # Save output (one logical row per line for correct column alignment)
     if output:
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        transformed.to_csv(output_path, index=False)
+        df_for_csv.to_csv(output_path, index=False)
         logger.info(f"Saved transformed data to {output_path}")
     
     # Upload to S3
@@ -342,7 +345,7 @@ def transform_news(
             prefix = "transformed/news"
             
             aws.upload_dataframe_to_csv(
-                transformed,
+                df_for_csv,
                 settings.aws.default_bucket,
                 file_name,
                 prefix

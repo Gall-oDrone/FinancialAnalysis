@@ -518,6 +518,28 @@ class TestFinancialMetricsTask:
         assert out["llm_financial_metrics"] is not None
         assert out["llm_financial_metrics"]["ticker"] == "BTC"
 
+    def test_parse_response_key_facts_unquoted_string(self, task):
+        """LLM sometimes omits opening quote on key_facts entries; repair parses."""
+        raw = (
+            '{"ticker": "BTC", "event_type": "macro", "overall_sentiment": -0.5, '
+            '"forward_sentiment": -0.6, "surprise_score": -0.4, "risk_score": 0.5, '
+            '"uncertainty_score": 0.7, "impact_strength": 0.6, "immediacy": 0.8, '
+            '"impact_horizon": "short_term", "confidence": 0.7, "sentiment_label": "negative", '
+            '"impact_level": "high", "signal": "bearish", "actionable": true, '
+            '"sectors": ["crypto", "fx"], "entities": ["Bitcoin", "AUD"], '
+            '"key_facts": [\n'
+            '"BTC\'s rally has stalled.",\n'
+            'Expectations of a BOJ rate hike in December are growing.",\n'
+            '"The yen is strengthening."\n'
+            ']}'
+        )
+        out = task.parse_response(raw)
+        assert out.get("llm_error") is None
+        assert out["llm_financial_metrics"] is not None
+        kf = out["llm_financial_metrics"].get("key_facts") or []
+        assert any("BOJ" in str(f) for f in kf)
+        assert any("yen" in str(f).lower() for f in kf)
+
 
 class TestSummaryAndThemesTask:
     """Smoke tests for default SummaryAndThemesTask."""

@@ -107,6 +107,33 @@ def _serialize_row_for_news_db(row: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# Columns that may be list/dict and must be serialized to a single string for CSV (avoids commas/newlines breaking columns)
+_CSV_JSON_COLUMNS = (
+    "tickers", "secondary_intents", "keywords", "entities",
+    "llm_themes", "llm_entities", "llm_financial_metrics", "llm_sectors", "llm_key_facts",
+)
+
+
+def _prepare_news_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare a transformed-news DataFrame for CSV export so each logical row is one physical line.
+    - Serializes list/dict columns to compact JSON (no newlines).
+    - Replaces newlines and carriage returns in string columns with a space.
+    This prevents misalignment when opening in Excel or other tools that do not handle quoted newlines.
+    """
+    out = df.copy()
+    for col in out.columns:
+        if col in _CSV_JSON_COLUMNS:
+            out[col] = out[col].apply(
+                lambda x: json.dumps(x, separators=(",", ":")) if isinstance(x, (list, dict)) else x
+            )
+    for col in out.columns:
+        ser = out[col]
+        if ser.dtype == object or ser.dtype.name == "string":
+            out[col] = ser.astype(str).str.replace("\r\n", " ", regex=False).str.replace("\n", " ", regex=False).str.replace("\r", " ", regex=False)
+    return out
+
+
 def _ensure_news_transformed_table(pg_conn) -> None:
     """Ensure financial_news_transformed table and indexes exist."""
     from storage.postgres import PostgresSQL_table_queries as q
@@ -311,12 +338,14 @@ def upload_news_batches_to_s3(
     for batch_type in batch_types:
         if batch_type == "run":
             key = build_s3_key_news_batch("run", now, agentic=agentic)
-            upload_dataframe_to_s3_key(s3_client, bucket, key, transformed_df)
+            df_export = _prepare_news_dataframe_for_csv(transformed_df)
+            upload_dataframe_to_s3_key(s3_client, bucket, key, df_export)
             logger.info("Uploaded batch run to s3://%s/%s", bucket, key)
         elif batch_type in _DATA_PARTITION_BATCH_TYPES:
             for part_dt, sub_df in _group_transformed_by_partition(transformed_df, batch_type):
                 key = build_s3_key_news_batch(batch_type, part_dt, agentic=agentic)
-                upload_dataframe_to_s3_key(s3_client, bucket, key, sub_df)
+                df_export = _prepare_news_dataframe_for_csv(sub_df)
+                upload_dataframe_to_s3_key(s3_client, bucket, key, df_export)
                 logger.info("Uploaded batch %s (partition %s) to s3://%s/%s", batch_type, part_dt.date(), bucket, key)
         else:
             logger.warning("Unknown batch_type %s; skipping", batch_type)
@@ -424,7 +453,7 @@ def run_news_etl(
                 except Exception:
                     dt = datetime.utcnow()
                 key = build_s3_key_news_per_article(aid, dt, agentic=agentic_enabled)
-                one = pd.DataFrame([row])
+                one = _prepare_news_dataframe_for_csv(pd.DataFrame([row]))
                 upload_dataframe_to_s3_key(aws.s3_client, bucket, key, one)
             logger.info("Uploaded %d per-article CSVs to s3://%s/", len(transformed), bucket)
         if upload_s3_batch:

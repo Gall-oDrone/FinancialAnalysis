@@ -254,15 +254,30 @@ class FinancialMetricsTask(EnrichmentTask):
             s = s + suffix
         return s
 
+    def _repair_key_facts_unquoted_strings(self, raw: str) -> str:
+        """Fix key_facts array entries where the LLM omitted the opening quote (e.g. 'Expectations...' instead of '\"Expectations...')."""
+        if not raw or '"key_facts"' not in raw:
+            return raw
+        # After comma or [, we sometimes get newline then unquoted sentence ending with ."
+        # Pattern: (,\s*\\n)\s*([A-Z][^"\\n]+?\\.)\s*"  -> wrap in quotes: \1 "\2"
+        # We need to add the opening quote; the " after the period stays as closing quote.
+        pattern = re.compile(
+            r'(,\s*\n)\s*([A-Z][^"\n]+?\.)\s*"',
+            re.MULTILINE,
+        )
+        return pattern.sub(r'\1 "\2"', raw)
+
     def _try_parse_candidates(self, *candidates: str) -> Optional[Dict[str, Any]]:
-        """Try json.loads, trailing-comma fix, newline normalize, control-char strip, truncation repair, and literal_eval."""
+        """Try json.loads, trailing-comma fix, newline normalize, control-char strip, truncation repair, key_facts quote repair, and literal_eval."""
         for raw in candidates:
             if not raw or not raw.strip():
                 continue
-            # Build variants: original, strip control chars, normalize newlines, repair truncated
+            # Build variants: original, strip control chars, key_facts repair (LLM often omits opening quote), etc.
             variants = [
                 raw,
                 self._strip_control_chars(raw),
+                self._repair_key_facts_unquoted_strings(raw),
+                self._repair_key_facts_unquoted_strings(self._strip_control_chars(raw)),
                 self._normalize_newlines_in_json_string(raw),
                 self._normalize_newlines_in_json_string(self._strip_control_chars(raw)),
                 self._repair_truncated_json(raw),
@@ -582,7 +597,8 @@ class AgenticTextEnricher:
         if max_rows is not None:
             to_process = min(to_process, max_rows)
         progress_interval = max(1, to_process // 20)  # print ~20 times over the run
-        print(f"Agentic enrichment: processing {to_process} rows (progress every {progress_interval} rows)")
+        date_range_msg = self._format_daterange_for_progress(df.iloc[:to_process])
+        print(f"Agentic enrichment: processing {to_process} rows (daterange: {date_range_msg}, progress every {progress_interval} rows)")
         for idx in range(to_process):
             row = df.iloc[idx]
             row_ix = out.index[idx]  # use index label for .at (handles list/dict values)
@@ -603,6 +619,22 @@ class AgenticTextEnricher:
                 print(f"  progress: {idx + 1}/{to_process} rows")
         print(f"Agentic enrichment done: {to_process} rows")
         return out
+
+    def _format_daterange_for_progress(self, slice_df: pd.DataFrame) -> str:
+        """Return a short daterange string from the dataframe slice's datetime column for progress messages."""
+        if slice_df.empty or "datetime" not in slice_df.columns:
+            return "—"
+        try:
+            dt = pd.to_datetime(slice_df["datetime"], errors="coerce")
+            valid = dt.notna()
+            if not valid.any():
+                return "—"
+            mn, mx = dt.loc[valid].min(), dt.loc[valid].max()
+            if mn == mx:
+                return str(mn.date()) if hasattr(mn, "date") else str(mn)[:10]
+            return f"{mn.date()} to {mx.date()}" if hasattr(mn, "date") else f"{str(mn)[:10]} to {str(mx)[:10]}"
+        except Exception:
+            return "—"
 
 
 def agentic_enrich_pipeline(
