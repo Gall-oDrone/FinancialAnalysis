@@ -21,6 +21,7 @@ _HANDLERS: Dict[str, Callable[..., Dict[str, Any]]] = {
     "stock_risk_metrics": impl.stock_risk_metrics,
     "build_s3_key_news": impl.build_s3_key_news,
     "build_s3_key_stocks": impl.build_s3_key_stocks,
+    "build_s3_key_stocks_batch": impl.build_s3_key_stocks_batch,
     "ingest_news": impl.ingest_news,
     "ingest_stocks": impl.ingest_stocks,
     "run_news_transform": impl.run_news_transform,

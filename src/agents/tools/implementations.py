@@ -150,11 +150,30 @@ def build_s3_key_stocks(
     date: str,
     **kwargs: Any,
 ) -> Dict[str, Any]:
-    """Build S3 key for stocks file."""
+    """Build S3 key for transformed stocks (one file per book per day)."""
     from pipelines.etl_transform import build_s3_key_stocks as build_key
 
     key = build_key(book, date)
     return {"s3_key": key, "book": book, "date": date}
+
+
+def build_s3_key_stocks_batch(
+    book: str,
+    date: str,
+    batch_type: str,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Build S3 key for a batch transformed stocks file (run/week/month/year/day)."""
+    from datetime import datetime
+    from pipelines.etl_transform import build_s3_key_stocks_batch as build_key
+
+    try:
+        dt = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        dt = datetime.utcnow()
+    # For 'run' the pipeline ignores book; we still accept book for API consistency
+    key = build_key(book, dt, batch_type)
+    return {"s3_key": key, "book": book, "date": date, "batch_type": batch_type}
 
 
 def ingest_news(
@@ -239,6 +258,7 @@ def run_stocks_transform(
     warmup_days: int = 252,
     save_to_postgres: bool = True,
     upload_s3: bool = True,
+    upload_s3_batch: Optional[List[str]] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Run stocks ETL transform pipeline."""
@@ -251,13 +271,14 @@ def run_stocks_transform(
         warmup_days=warmup_days,
         save_to_postgres=save_to_postgres,
         upload_s3=upload_s3,
+        upload_s3_batch=upload_s3_batch,
     )
     if df is None or df.empty:
         return {"row_count": 0, "message": "No stock data transformed"}
     return {
         "row_count": len(df),
         "columns": list(df.columns),
-        "message": f"Transformed {len(df)} records; save_to_postgres={save_to_postgres}, upload_s3={upload_s3}",
+        "message": f"Transformed {len(df)} records; save_to_postgres={save_to_postgres}, upload_s3={upload_s3}, upload_s3_batch={upload_s3_batch}",
     }
 
 

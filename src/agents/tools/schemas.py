@@ -166,8 +166,9 @@ BUILD_S3_KEY_NEWS_SCHEMA = {
 BUILD_S3_KEY_STOCKS_SCHEMA = {
     "name": "build_s3_key_stocks",
     "description": (
-        "Build the S3 object key for transformed stocks (one file per book per day). "
-        "Use when the user needs the storage path for a book/date."
+        "Build the S3 object key for transformed stocks (one file per book per day) under "
+        "stocks/transformed/crypto/book={book}/year=.../month=.../day=.../format=csv/. "
+        "Use when the user needs the per-day storage path for a book/date."
     ),
     "input_schema": {
         "type": "object",
@@ -182,6 +183,34 @@ BUILD_S3_KEY_STOCKS_SCHEMA = {
             },
         },
         "required": ["book", "date"],
+    },
+}
+
+BUILD_S3_KEY_STOCKS_BATCH_SCHEMA = {
+    "name": "build_s3_key_stocks_batch",
+    "description": (
+        "Build the S3 object key for a batch transformed stocks file (run, week, month, year, or day) "
+        "under stocks/transformed/crypto/book={book}/... Use when the user needs the storage path "
+        "for a batch partition (e.g. year 2025 or week 52)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "book": {
+                "type": "string",
+                "description": "Book/symbol name (e.g. btc-usd). For batch_type 'run' the key is shared across books.",
+            },
+            "date": {
+                "type": "string",
+                "description": "Partition date in YYYY-MM-DD format (determines year/month/week/day).",
+            },
+            "batch_type": {
+                "type": "string",
+                "description": "Batch partition: 'run', 'week', 'month', 'year', or 'day'.",
+                "enum": ["run", "week", "month", "year", "day"],
+            },
+        },
+        "required": ["book", "date", "batch_type"],
     },
 }
 
@@ -288,7 +317,7 @@ RUN_STOCKS_TRANSFORM_SCHEMA = {
     "description": (
         "Run the stocks transformation pipeline: load OHLCV from Postgres, compute returns, "
         "volatility and technical indicators (SMA, EMA, RSI, MACD, Bollinger). "
-        "Optionally save to historical_processed and upload to S3."
+        "Optionally save to historical_processed and upload to S3 (per book/day and/or batch by run/week/month/year)."
     ),
     "input_schema": {
         "type": "object",
@@ -317,6 +346,11 @@ RUN_STOCKS_TRANSFORM_SCHEMA = {
             "upload_s3": {
                 "type": "boolean",
                 "description": "Whether to upload per book/day to S3. Default true.",
+            },
+            "upload_s3_batch": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["run", "week", "month", "year", "day"]},
+                "description": "Optional batch types to upload: e.g. ['run', 'week', 'month', 'year']. Omit for no batch upload.",
             },
         },
         "required": ["since"],
@@ -405,6 +439,7 @@ def get_all_schemas():
         STOCK_RISK_METRICS_SCHEMA,
         BUILD_S3_KEY_NEWS_SCHEMA,
         BUILD_S3_KEY_STOCKS_SCHEMA,
+        BUILD_S3_KEY_STOCKS_BATCH_SCHEMA,
         INGEST_NEWS_SCHEMA,
         INGEST_STOCKS_SCHEMA,
         RUN_NEWS_TRANSFORM_SCHEMA,

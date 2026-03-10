@@ -212,6 +212,25 @@ class TestBuildS3Keys:
         assert "btc-usd" in out["s3_key"].lower()
         assert "2026" in out["s3_key"]
 
+    def test_build_s3_key_stocks_batch(self):
+        from agents.tools import run_tool
+
+        out = run_tool(
+            "build_s3_key_stocks_batch",
+            {"book": "btc-usd", "date": "2026-02-22", "batch_type": "year"},
+        )
+        assert out["s3_key"] is not None
+        assert "stocks/transformed/crypto" in out["s3_key"]
+        assert "book=btc-usd" in out["s3_key"]
+        assert "y2026" in out["s3_key"]
+        assert out.get("batch_type") == "year"
+        # Run batch: single file, batch=run in path
+        out_run = run_tool(
+            "build_s3_key_stocks_batch",
+            {"book": "btc-usd", "date": "2026-01-01", "batch_type": "run"},
+        )
+        assert "batch=run" in out_run["s3_key"]
+
 
 class TestBatchTool:
     """Test batch_tool meta-tool."""
