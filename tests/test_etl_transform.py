@@ -17,6 +17,8 @@ from pipelines.etl_transform import (
     build_s3_key_news_per_article,
     build_s3_key_news_batch,
     build_s3_key_stocks,
+    STOCKS_PREFIX,
+    STOCKS_TRANSFORMED_PREFIX,
     _serialize_row_for_news_db,
     _prepare_news_dataframe_for_csv,
     _group_transformed_by_partition,
@@ -93,7 +95,7 @@ class TestS3PathBuilders:
 
     def test_build_s3_key_stocks(self):
         key = build_s3_key_stocks("btc-usd", datetime(2026, 2, 22))
-        assert "stocks/crypto" in key
+        assert "stocks/transformed/crypto" in key
         assert "book=btc-usd" in key
         assert "year=2026" in key
         assert "month=02" in key
@@ -104,8 +106,17 @@ class TestS3PathBuilders:
     def test_build_s3_key_stocks_pandas_timestamp(self):
         ts = pd.Timestamp("2026-02-22")
         key = build_s3_key_stocks("eth-usd", ts)
+        assert "stocks/transformed/crypto" in key
         assert "book=eth-usd" in key
         assert "20260222" in key
+
+    def test_build_s3_key_stocks_raw_prefix(self):
+        """Stocks can use raw prefix (stocks/crypto) when building key for non-transformed data."""
+        key = build_s3_key_stocks("btc-usd", datetime(2026, 2, 22), prefix=STOCKS_PREFIX)
+        assert key.startswith("stocks/crypto/")
+        assert "transformed" not in key
+        assert "book=btc-usd" in key
+        assert "20260222-btc-usd.csv" in key
 
 
 class TestGroupTransformedByPartition:

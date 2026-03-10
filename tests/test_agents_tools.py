@@ -208,6 +208,7 @@ class TestBuildS3Keys:
 
         out = run_tool("build_s3_key_stocks", {"book": "btc-usd", "date": "2026-01-27"})
         assert out["s3_key"] is not None
+        assert "stocks/transformed/crypto" in out["s3_key"]
         assert "btc-usd" in out["s3_key"].lower()
         assert "2026" in out["s3_key"]
 

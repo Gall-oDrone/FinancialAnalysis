@@ -7,7 +7,8 @@ ETL Transform Pipeline: Transform data from Postgres, save back to Postgres, pub
 S3 path conventions:
   News per-article: s3://{bucket}/news/crypto/[agentic=true|false/]year=.../format=csv/{id}.csv
   News batch:       s3://{bucket}/news/transformed/crypto/[agentic=true|false/]batch=run|year=... (run; year/month/week/day partitioned by article date)
-  Stocks:           s3://{bucket}/stocks/crypto/book={book}/year=YYYY/month=MM/day=DD/format=csv/YYYYMMDD-{book}.csv
+  Stocks (raw):     s3://{bucket}/stocks/crypto/book={book}/...
+  Stocks (transformed): s3://{bucket}/stocks/transformed/crypto/book={book}/year=YYYY/month=MM/day=DD/format=csv/YYYYMMDD-{book}.csv
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ logger = get_logger(__name__)
 NEWS_PREFIX = "news/crypto"
 NEWS_TRANSFORMED_PREFIX = "news/transformed/crypto"
 STOCKS_PREFIX = "stocks/crypto"
+STOCKS_TRANSFORMED_PREFIX = "stocks/transformed/crypto"
 
 
 def build_s3_key_news_per_article(
@@ -85,7 +87,7 @@ def build_s3_key_news_batch(
 def build_s3_key_stocks(
     book: str,
     date_val,
-    prefix: str = STOCKS_PREFIX,
+    prefix: str = STOCKS_TRANSFORMED_PREFIX,
 ) -> str:
     """Build S3 key for transformed stocks CSV (one file per book per day)."""
     dt = pd.to_datetime(date_val)
@@ -497,12 +499,14 @@ def run_stocks_etl(
     warmup_start_str = warmup_start.strftime("%Y-%m-%d")
     until_str = until_dt.strftime("%Y-%m-%d") if until else since
 
+    logger.info("Ingesting stocks (warmup %s to %s)...", warmup_start_str, until_str)
     df = ingest_stocks(since=warmup_start_str, until=until_str, books=books)
     if df is None or df.empty:
         logger.warning("No stock data to transform")
         return pd.DataFrame()
 
     df["date"] = pd.to_datetime(df["date"])
+    logger.info("Transforming (returns, volatility, technical indicators)...")
     pipeline = StockTransformationPipeline()
     transformed = pipeline.transform(df, price_col="close", group_by="book")
     # Keep only requested date range for output
@@ -521,6 +525,7 @@ def run_stocks_etl(
     if upload_s3 and bucket:
         aws = CloudStorageProvider.AWS()
         grouped = transformed.groupby(["book", "date"])
+        logger.info("Uploading %d book/day files to s3://%s/...", grouped.ngroups, bucket)
         for (book, date_val), group in grouped:
             key = build_s3_key_stocks(book, date_val)
             upload_dataframe_to_s3_key(aws.s3_client, bucket, key, group)
