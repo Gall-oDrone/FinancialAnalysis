@@ -98,6 +98,41 @@ def build_s3_key_stocks(
     )
 
 
+def build_s3_key_stocks_batch(
+    book: str,
+    dt: datetime,
+    batch_type: str,  # "run" | "week" | "month" | "year" | "day"
+    prefix: str = STOCKS_TRANSFORMED_PREFIX,
+) -> str:
+    """Build S3 key for a batch transformed stocks CSV (one file per book per partition).
+    For run, book is ignored and one key is returned for the whole run (caller may pass empty string).
+    """
+    book_lower = str(book).lower() if book else ""
+    if batch_type == "run":
+        ts = dt.strftime("%Y%m%d_%H%M%S")
+        return f"{prefix}/batch=run/format=csv/stocks_{ts}.csv"
+    if batch_type == "week":
+        week_num = int(dt.strftime("%W"))
+        return (
+            f"{prefix}/book={book_lower}/year={dt.year}/week={week_num:02d}/format=csv/"
+            f"y{dt.year}_w{week_num:02d}-{book_lower}.csv"
+        )
+    if batch_type == "month":
+        return (
+            f"{prefix}/book={book_lower}/year={dt.year}/month={dt.month:02d}/format=csv/"
+            f"y{dt.year}_m{dt.month:02d}-{book_lower}.csv"
+        )
+    if batch_type == "year":
+        return f"{prefix}/book={book_lower}/year={dt.year}/format=csv/y{dt.year}-{book_lower}.csv"
+    if batch_type == "day":
+        date_str = dt.strftime("%Y%m%d")
+        return (
+            f"{prefix}/book={book_lower}/year={dt.year}/month={dt.month:02d}/day={dt.day:02d}"
+            f"/format=csv/{date_str}-{book_lower}.csv"
+        )
+    raise ValueError(f"batch_type must be one of run, week, month, year, day; got {batch_type}")
+
+
 def _serialize_row_for_news_db(row: Dict[str, Any]) -> Dict[str, Any]:
     """Convert list/dict fields to JSON strings for Postgres JSONB."""
     out = dict(row)
@@ -328,6 +363,49 @@ def upload_dataframe_to_s3_key(
 _DATA_PARTITION_BATCH_TYPES = ("year", "month", "week", "day")
 
 
+def _group_stocks_by_partition(
+    transformed_df: pd.DataFrame,
+    batch_type: str,
+):
+    """Yield (book, partition_dt, sub_df) for each (book, partition). batch_type in ('year','month','week','day').
+    Partition is derived from stock date column.
+    """
+    if batch_type not in _DATA_PARTITION_BATCH_TYPES or transformed_df.empty:
+        return
+    if "date" not in transformed_df.columns or "book" not in transformed_df.columns:
+        return
+    df = transformed_df.copy()
+    df["_date"] = pd.to_datetime(df["date"], errors="coerce")
+    valid = df["_date"].notna()
+    if not valid.any():
+        return
+    subset = df.loc[valid]
+    d = subset["_date"]
+    for book, book_df in subset.groupby("book"):
+        bd = d.loc[book_df.index]
+        if batch_type == "year":
+            for year, group in book_df.groupby(bd.dt.year):
+                part_dt = datetime(int(year), 1, 1)
+                yield book, part_dt, group.drop(columns=["_date"], errors="ignore")
+        elif batch_type == "month":
+            for (year, month), group in book_df.groupby([bd.dt.year, bd.dt.month]):
+                part_dt = datetime(int(year), int(month), 1)
+                yield book, part_dt, group.drop(columns=["_date"], errors="ignore")
+        elif batch_type == "week":
+            week_num = bd.dt.strftime("%W").astype(int)
+            for (year, week), group in book_df.groupby([bd.dt.year, week_num]):
+                part_dt = group["_date"].min()
+                if pd.isna(part_dt):
+                    part_dt = datetime(int(year), 1, 1)
+                else:
+                    part_dt = part_dt.to_pydatetime() if hasattr(part_dt, "to_pydatetime") else part_dt
+                yield book, part_dt, group.drop(columns=["_date"], errors="ignore")
+        elif batch_type == "day":
+            for (year, month, day), group in book_df.groupby([bd.dt.year, bd.dt.month, bd.dt.day]):
+                part_dt = datetime(int(year), int(month), int(day))
+                yield book, part_dt, group.drop(columns=["_date"], errors="ignore")
+
+
 def upload_news_batches_to_s3(
     s3_client,
     bucket: str,
@@ -349,6 +427,29 @@ def upload_news_batches_to_s3(
                 df_export = _prepare_news_dataframe_for_csv(sub_df)
                 upload_dataframe_to_s3_key(s3_client, bucket, key, df_export)
                 logger.info("Uploaded batch %s (partition %s) to s3://%s/%s", batch_type, part_dt.date(), bucket, key)
+        else:
+            logger.warning("Unknown batch_type %s; skipping", batch_type)
+
+
+def upload_stocks_batches_to_s3(
+    s3_client,
+    bucket: str,
+    transformed_df: pd.DataFrame,
+    batch_types: List[str],
+) -> None:
+    """Upload batch CSVs: one run file (all books) and/or one file per (book, partition) for year/month/week/day."""
+    now = datetime.utcnow()
+    for batch_type in batch_types:
+        if batch_type == "run":
+            key = build_s3_key_stocks_batch("", now, "run")
+            upload_dataframe_to_s3_key(s3_client, bucket, key, transformed_df)
+            logger.info("Uploaded stocks batch run to s3://%s/%s", bucket, key)
+        elif batch_type in _DATA_PARTITION_BATCH_TYPES:
+            for book, part_dt, sub_df in _group_stocks_by_partition(transformed_df, batch_type):
+                key = build_s3_key_stocks_batch(book, part_dt, batch_type)
+                upload_dataframe_to_s3_key(s3_client, bucket, key, sub_df)
+                logger.info("Uploaded stocks batch %s (book=%s, partition %s) to s3://%s/%s",
+                            batch_type, book, part_dt.date(), bucket, key)
         else:
             logger.warning("Unknown batch_type %s; skipping", batch_type)
 
@@ -475,11 +576,12 @@ def run_stocks_etl(
     stocks_bucket: Optional[str] = None,
     save_to_postgres: bool = True,
     upload_s3: bool = True,
+    upload_s3_batch: Optional[List[str]] = None,  # e.g. ["run", "week", "month", "year"]
     pg_conn=None,
 ) -> pd.DataFrame:
     """
     Ingest stocks from Postgres, transform per book with warmup window,
-    save to historical_processed, then upload per book/day to S3.
+    save to historical_processed, then upload to S3 (per book/day and/or batch by week/month/year).
     """
     from config.settings import get_settings
     from storage.postgres.pgConn import PgConn
@@ -490,7 +592,7 @@ def run_stocks_etl(
 
     settings = get_settings()
     bucket = stocks_bucket or getattr(settings.aws, "stocks_bucket", None) or settings.aws.default_bucket
-    if not bucket and upload_s3:
+    if not bucket and (upload_s3 or upload_s3_batch):
         logger.warning("No stocks S3 bucket configured; skipping S3 upload")
 
     since_dt = pd.to_datetime(since)
@@ -522,13 +624,16 @@ def run_stocks_etl(
         if pg_conn is None:
             conn.close_connection()
 
-    if upload_s3 and bucket:
+    if (upload_s3 or upload_s3_batch) and bucket:
         aws = CloudStorageProvider.AWS()
-        grouped = transformed.groupby(["book", "date"])
-        logger.info("Uploading %d book/day files to s3://%s/...", grouped.ngroups, bucket)
-        for (book, date_val), group in grouped:
-            key = build_s3_key_stocks(book, date_val)
-            upload_dataframe_to_s3_key(aws.s3_client, bucket, key, group)
-        logger.info("Uploaded %d group files to s3://%s/", grouped.ngroups, bucket)
+        if upload_s3:
+            grouped = transformed.groupby(["book", "date"])
+            logger.info("Uploading %d book/day files to s3://%s/...", grouped.ngroups, bucket)
+            for (book, date_val), group in grouped:
+                key = build_s3_key_stocks(book, date_val)
+                upload_dataframe_to_s3_key(aws.s3_client, bucket, key, group)
+            logger.info("Uploaded %d group files to s3://%s/", grouped.ngroups, bucket)
+        if upload_s3_batch:
+            upload_stocks_batches_to_s3(aws.s3_client, bucket, transformed, upload_s3_batch)
 
     return transformed

@@ -17,12 +17,15 @@ from pipelines.etl_transform import (
     build_s3_key_news_per_article,
     build_s3_key_news_batch,
     build_s3_key_stocks,
+    build_s3_key_stocks_batch,
     STOCKS_PREFIX,
     STOCKS_TRANSFORMED_PREFIX,
     _serialize_row_for_news_db,
     _prepare_news_dataframe_for_csv,
     _group_transformed_by_partition,
+    _group_stocks_by_partition,
     upload_news_batches_to_s3,
+    upload_stocks_batches_to_s3,
     agentic_result_has_failures,
     save_transformed_news_to_postgres,
     upload_dataframe_to_s3_key,
@@ -117,6 +120,60 @@ class TestS3PathBuilders:
         assert "transformed" not in key
         assert "book=btc-usd" in key
         assert "20260222-btc-usd.csv" in key
+
+    def test_build_s3_key_stocks_batch_run(self):
+        dt = datetime(2026, 2, 26, 18, 31, 22)
+        key = build_s3_key_stocks_batch("", dt, "run")
+        assert "stocks/transformed/crypto" in key
+        assert "batch=run" in key
+        assert "format=csv" in key
+        assert "stocks_20260226_183122.csv" in key
+
+    def test_build_s3_key_stocks_batch_year_month_week_day(self):
+        dt = datetime(2026, 2, 26)
+        y = build_s3_key_stocks_batch("btc-usd", dt, "year")
+        m = build_s3_key_stocks_batch("btc-usd", dt, "month")
+        w = build_s3_key_stocks_batch("btc-usd", dt, "week")
+        d = build_s3_key_stocks_batch("btc-usd", dt, "day")
+        assert "book=btc-usd" in y and "y2026-btc-usd.csv" in y
+        assert "book=btc-usd" in m and "y2026_m02-btc-usd.csv" in m
+        assert "book=btc-usd" in w and "week=" in w and "w" in w and "btc-usd" in w
+        assert "book=btc-usd" in d and "20260226-btc-usd.csv" in d
+        assert "stocks/transformed/crypto" in y
+
+    def test_build_s3_key_stocks_batch_invalid(self):
+        with pytest.raises(ValueError, match="batch_type"):
+            build_s3_key_stocks_batch("btc-usd", datetime(2026, 2, 26), "invalid")
+
+
+class TestGroupStocksByPartition:
+    """Test stocks partitioning for batch uploads (per book, then by date partition)."""
+
+    def test_group_stocks_by_year(self):
+        df = pd.DataFrame({
+            "book": ["btc-usd", "btc-usd", "eth-usd"],
+            "date": ["2025-01-15", "2025-06-20", "2026-02-01"],
+        })
+        parts = list(_group_stocks_by_partition(df, "year"))
+        assert len(parts) == 2  # (btc-usd, 2025), (eth-usd, 2026)
+        books = [p[0] for p in parts]
+        assert "btc-usd" in books and "eth-usd" in books
+        assert all(p[1].year in (2025, 2026) for p in parts)
+
+    def test_group_stocks_by_month(self):
+        df = pd.DataFrame({
+            "book": ["btc-usd"] * 3,
+            "date": ["2025-01-15", "2025-01-20", "2025-02-01"],
+        })
+        parts = list(_group_stocks_by_partition(df, "month"))
+        assert len(parts) == 2  # Jan 2025, Feb 2025
+        for _book, part_dt, sub_df in parts:
+            assert len(sub_df) in (1, 2)
+
+    def test_group_stocks_by_partition_empty(self):
+        assert list(_group_stocks_by_partition(pd.DataFrame(), "year")) == []
+        df = pd.DataFrame({"book": ["a"], "date": [None]})
+        assert list(_group_stocks_by_partition(df, "year")) == []
 
 
 class TestGroupTransformedByPartition:
@@ -259,6 +316,39 @@ class TestUploadNewsBatchesToS3:
 
         assert len(put_keys) == 1
         assert "batch=run" in put_keys[0]
+
+
+class TestUploadStocksBatchesToS3:
+    """Test stocks batch uploads (run and year/month/week/day per book)."""
+
+    def test_upload_stocks_batch_year(self):
+        df = pd.DataFrame({
+            "book": ["btc-usd", "btc-usd", "eth-usd"],
+            "date": ["2025-01-15", "2025-06-20", "2026-02-01"],
+            "close": [100.0, 101.0, 50.0],
+        })
+        put_keys = []
+        mock_s3 = MagicMock()
+        mock_s3.put_object = lambda **kw: put_keys.append(kw.get("Key", ""))
+
+        upload_stocks_batches_to_s3(mock_s3, "bucket", df, ["year"])
+
+        assert len(put_keys) == 2  # (btc-usd, 2025), (eth-usd, 2026)
+        assert all("stocks/transformed/crypto" in k and "book=" in k for k in put_keys)
+        assert any("btc-usd" in k and "y2025" in k for k in put_keys)
+        assert any("eth-usd" in k and "y2026" in k for k in put_keys)
+
+    def test_upload_stocks_batch_run(self):
+        df = pd.DataFrame({"book": ["btc-usd"], "date": ["2025-01-15"], "close": [100.0]})
+        put_keys = []
+        mock_s3 = MagicMock()
+        mock_s3.put_object = lambda **kw: put_keys.append(kw.get("Key", ""))
+
+        upload_stocks_batches_to_s3(mock_s3, "bucket", df, ["run"])
+
+        assert len(put_keys) == 1
+        assert "batch=run" in put_keys[0]
+        assert "stocks/transformed/crypto" in put_keys[0]
 
 
 class TestAgenticResultHasFailures:
@@ -511,3 +601,55 @@ class TestRunStocksEtl:
         assert not result.empty
         mock_ingest.assert_called_once()
         mock_pipeline.transform.assert_called_once()
+
+    @patch("pipelines.etl_transform.upload_stocks_batches_to_s3")
+    @patch("pipelines.etl_transform.CloudStorageProvider")
+    @patch("pipelines.etl_cli.ingest_stocks")
+    @patch("pipelines.etl_transform.StockTransformationPipeline")
+    def test_run_stocks_etl_upload_s3_batch(
+        self, mock_pipeline_cls, mock_ingest, mock_aws_cls, mock_upload_batch, sample_stocks_df
+    ):
+        from pipelines.etl_transform import run_stocks_etl
+
+        transformed = sample_stocks_df.copy()
+        transformed["simple_return"] = 0.0
+        transformed["log_return"] = 0.0
+        transformed["volatility_20d"] = 0.01
+        transformed["sma_20"] = 100.0
+        transformed["sma_50"] = 100.0
+        transformed["sma_200"] = 100.0
+        transformed["ema_12"] = 100.0
+        transformed["ema_26"] = 100.0
+        transformed["rsi_14"] = 50.0
+        transformed["macd"] = 0.0
+        transformed["macd_signal"] = 0.0
+        transformed["macd_histogram"] = 0.0
+        transformed["bb_upper"] = 101.0
+        transformed["bb_middle"] = 100.0
+        transformed["bb_lower"] = 99.0
+        transformed["volatility_parkinson"] = 0.01
+        transformed["volatility_gk"] = 0.01
+        mock_ingest.return_value = sample_stocks_df
+        mock_pipeline = MagicMock()
+        mock_pipeline.transform.return_value = transformed
+        mock_pipeline_cls.return_value = mock_pipeline
+        mock_aws = MagicMock()
+        mock_aws_cls.AWS.return_value = mock_aws
+
+        with patch("pipelines.etl_transform.get_settings") as mock_settings:
+            mock_settings.return_value.aws.default_bucket = "test-bucket"
+            mock_settings.return_value.aws.stocks_bucket = None
+
+            result = run_stocks_etl(
+                since="2026-01-01",
+                until="2026-01-28",
+                save_to_postgres=False,
+                upload_s3=False,
+                upload_s3_batch=["year"],
+            )
+
+        assert not result.empty
+        mock_upload_batch.assert_called_once()
+        call_args = mock_upload_batch.call_args
+        assert call_args[0][2] is result  # transformed_df
+        assert call_args[0][3] == ["year"]  # batch_types
