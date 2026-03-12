@@ -137,7 +137,10 @@ class PgConn:
         try:
             cursor.execute(insert_sql, list(row_dict.values()))
             self.connection.commit()
-            print("done")
+            if cursor.rowcount == 0:
+                print("skipped (duplicate)")
+            else:
+                print("done")
         except Exception as e:
             print("error on saving data to pg:", e, "\n row_dict:", row_dict)
             print("failed")
