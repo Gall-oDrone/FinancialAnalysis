@@ -146,12 +146,16 @@ class PgConn:
             cursor.close()
 
     def build_insert_sql(self, row_dict):
-        # Dynamically build the INSERT INTO SQL statement
-        return sql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT DO NOTHING").format(
+        # Build INSERT with ON CONFLICT DO NOTHING to avoid duplicates.
+        # For historical table: use ON CONFLICT (book, date) when table has UNIQUE(book, date).
+        base = sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
             sql.Identifier(self.tablename),
             sql.SQL(", ").join(map(sql.Identifier, row_dict.keys())),
             sql.SQL(", ").join(sql.Placeholder() for _ in range(len(row_dict)))
         )
+        if "book" in row_dict and "date" in row_dict:
+            return base + sql.SQL(" ON CONFLICT (book, date) DO NOTHING")
+        return base + sql.SQL(" ON CONFLICT DO NOTHING")
 
     def get_stocks_prices(self, book_names=[]):
         cursor = self.connection.cursor()

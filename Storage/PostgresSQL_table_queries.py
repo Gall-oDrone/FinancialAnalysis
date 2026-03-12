@@ -14,7 +14,8 @@ HISTORICAL_CRYPTO_STOCKS_TABLE_QUERY = """
                 low FLOAT,
                 close FLOAT,
                 adj_close FLOAT,
-                volume BIGINT
+                volume BIGINT,
+                UNIQUE(book, date)
             )
         """
 HISTORICAL_FINANCIAL_NEWS_TABLE_QUERY = """
