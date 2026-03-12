@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: financial-analysis-dev
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+patchesStrategicMerge:
+  - development-patches.yaml
+
+# Set image from GitHub Container Registry (replace OWNER with your GitHub org/user)
+images:
+  - name: financial-analysis-scraper
+    newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-scraper
+    newTag: latest

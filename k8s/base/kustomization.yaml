@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap.yaml
+  - secret.yaml
+  - postgres.yaml
+  - scraper.yaml
+
+commonLabels:
+  app: financial-analysis
+
+images:
+  # Override in overlays with actual registry (e.g. ghcr.io/owner/financial_analysis/scraper)
+  - name: financial-analysis-scraper
+    newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-scraper
+    newTag: latest

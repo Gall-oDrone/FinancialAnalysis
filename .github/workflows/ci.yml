@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, feat/k8s-deployment-manifests ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, feat/k8s-deployment-manifests ]
 
 jobs:
   lint:

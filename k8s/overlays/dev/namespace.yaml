@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: financial-analysis-dev
+  labels:
+    app: financial-analysis
+    env: dev

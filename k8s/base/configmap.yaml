@@ -1,0 +1,22 @@
+# ConfigMap for financial-analysis pipeline (non-sensitive config)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: financial-analysis-config
+  labels:
+    app: financial-analysis
+data:
+  # PostgreSQL
+  pg-host: "postgres"
+  pg-port: "5432"
+  pg-dbname: "financial_db"
+  pg-user: "financial_user"
+  # Scraping
+  scraping-headless: "true"
+  scraping-timeout: "30"
+  scraping-debug: "false"
+  # Logging
+  log-level: "INFO"
+  # Chrome (in-cluster)
+  chrome-bin: "/usr/bin/chromium"
+  chromedriver-path: "/usr/bin/chromedriver"

@@ -1,0 +1,138 @@
+# Scraper deployment - web scraping + optional raw data to S3
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scraper
+  labels:
+    app: financial-analysis
+    component: scraper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: financial-analysis
+      component: scraper
+  template:
+    metadata:
+      labels:
+        app: financial-analysis
+        component: scraper
+    spec:
+      containers:
+        - name: scraper
+          image: financial-analysis-scraper:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ENVIRONMENT
+              value: "development"
+            - name: DEBUG
+              value: "false"
+            - name: PGDBHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: pg-host
+            - name: PGDBPORT
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: pg-port
+            - name: PGDBNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: pg-dbname
+            - name: PGDBUSER
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: pg-user
+            - name: PGDBPASS
+              valueFrom:
+                secretKeyRef:
+                  name: financial-analysis-secrets
+                  key: pg-password
+            - name: SCRAPING_HEADLESS
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: scraping-headless
+            - name: SCRAPING_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: scraping-timeout
+            - name: SCRAPING_DEBUG
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: scraping-debug
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: log-level
+            - name: CHROME_BIN
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: chrome-bin
+            - name: CHROMEDRIVER_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: financial-analysis-config
+                  key: chromedriver-path
+          command:
+            - python
+            - -c
+            - "print('Scraper ready. Run via CronJob or kubectl exec.'); import time; time.sleep(86400)"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          securityContext:
+            seccompProfile:
+              type: Unconfined
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import sys; sys.exit(0)"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import sys; sys.exit(0)"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+      # Required for Chrome in container
+      securityContext:
+        seccompProfile:
+          type: Unconfined
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scraper
+  labels:
+    app: financial-analysis
+    component: scraper
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: financial-analysis
+    component: scraper

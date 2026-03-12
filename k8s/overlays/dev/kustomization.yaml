@@ -1,0 +1,14 @@
+# Dev overlay - for local kind/minikube (same as development, default namespace)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: financial-analysis-dev
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+images:
+  - name: financial-analysis-scraper
+    newName: financial-analysis-scraper
+    newTag: latest

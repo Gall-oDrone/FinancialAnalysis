@@ -1,0 +1,75 @@
+# Deploy financial-analysis pipeline to development (EKS or any cluster).
+#
+# Option A – EKS with OIDC:
+#   - GitHub Environment "development" with secrets:
+#     AWS_GITHUB_ACTIONS_ROLE_ARN, EKS_CLUSTER_NAME_DEVELOPMENT
+#   - AWS Secrets Manager (or External Secrets) for financial-analysis-secrets
+#
+# Option B – Any cluster:
+#   - Environment "development" with secret KUBE_CONFIG (base64 kubeconfig)
+#   - Uncomment the "Use KUBE_CONFIG" step and skip "Configure AWS" / "Update kubeconfig"
+name: Deploy (Development)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, feat/k8s-deployment-manifests]
+  workflow_run:
+    workflows: ["Build and Push Scraper Image"]
+    types: completed
+    branches: [develop, feat/k8s-deployment-manifests]
+
+env:
+  AWS_REGION: us-east-1
+  NAMESPACE: financial-analysis-dev
+
+jobs:
+  deploy-development:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Option A: EKS with OIDC (comment out if using Option B)
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig (EKS)
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME_DEVELOPMENT }}
+
+      # Option B: Use existing kubeconfig (uncomment and add secret KUBE_CONFIG to environment)
+      # - name: Set kubeconfig
+      #   run: |
+      #     echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+      #     echo "KUBECONFIG=$(pwd)/kubeconfig" >> $GITHUB_ENV
+
+      - name: Set Kustomize image for scraper
+        run: |
+          cd k8s/overlays/development
+          kustomize edit set image financial-analysis-scraper=ghcr.io/${{ github.repository_owner }}/financial-analysis-scraper:${{ env.IMAGE_TAG }}
+          cd -
+
+      - name: Deploy with Kustomize
+        run: |
+          kubectl apply -k k8s/overlays/development
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment/postgres -n ${{ env.NAMESPACE }} --timeout=300s
+          kubectl rollout status deployment/scraper -n ${{ env.NAMESPACE }} --timeout=300s
+
+      - name: Show status
+        run: |
+          kubectl get pods,svc -n ${{ env.NAMESPACE }}
