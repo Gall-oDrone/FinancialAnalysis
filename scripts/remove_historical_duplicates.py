@@ -3,6 +3,14 @@
 Remove duplicate rows from the PostgreSQL table `historical` (stocks).
 Keeps one row per (book, date); optionally ensures UNIQUE(book, date) constraint exists.
 Uses env vars: PGDBNAME, PGDBUSER, PGDBPASS, PGDBHOST, PGDBPORT (defaults: cryptostocks, postgres, localhost, 5432).
+
+Root cause of ImportError (libssl.1.1.dylib not loaded): the installed psycopg2 binary was built
+against Postgres.app's OpenSSL at /Applications/Postgres.app/Contents/Versions/12/lib/, which may
+no longer exist on your Mac. Fix: run via the wrapper script so DYLD_LIBRARY_PATH is set before
+Python starts, e.g.:
+  ./scripts/remove_historical_duplicates.sh
+or:
+  DYLD_LIBRARY_PATH=/usr/local/opt/openssl@1.1/lib python3 scripts/remove_historical_duplicates.py
 """
 import os
 import sys
