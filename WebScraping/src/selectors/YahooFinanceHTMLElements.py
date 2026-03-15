@@ -4,4 +4,4 @@ SECTION_CONTAINER_yf_1ce4p3e = "/html/body/div[2]/main/section/section/section/s
 UL_STREAM_ITEMS_yf_1drgw5l = "/html/body/div[2]/main/section/section/section/section/section/div/div/div/div/ul"
 UL_STREAM_ITEMS_yf_9xydx9 = "/html/body/div[2]/div[3]/main/section/section/section/section/section/div/div[1]/div/div/ul"
 UL_STREAM_ITEMS_yf_1qcp8cc = "/html/body/div[1]/div[4]/main/section/section/section/section/section/div/div/div/div/ul"
-UL_STREAM_ITEMS_yf_ydpc1 = "/html/body/div[2]/div[3]/main/section/section/section/section/section/div/div/div[1]/div/ul"
+UL_STREAM_ITEMS_yf_ydpc1 = "/html/body/div[2]/div[3]/main/section/section/section/section/section/div/div/div[0]/div/ul"
