@@ -59,8 +59,9 @@ class TestExportGenaiToS3FromDb:
         prefix_path = kwargs.get("prefix_path") or args[2]
 
         assert prefix_path.startswith("news/transformed/crypto/agentic=true/")
+        # Should partition by the requested date (2026-01-27)
         assert "year=2026" in prefix_path
-        assert "month=03" in prefix_path
-        assert "day=17" in prefix_path
+        assert "month=01" in prefix_path
+        assert "day=27" in prefix_path
         assert "format=jsonl" in prefix_path
 

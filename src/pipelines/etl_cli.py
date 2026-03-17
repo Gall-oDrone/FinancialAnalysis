@@ -28,9 +28,8 @@ import pandas as pd
 
 from config.settings import get_settings
 from core.logging import get_logger
-from storage.postgres.pgConn import PgConn
-from storage.postgres import PostgresSQL_table_queries
-from storage.cloud.CloudStorage import CloudStorageProvider
+from Storage.CloudStorage import CloudStorageProvider
+from export.genai_export import export_to_s3_jsonl
 
 logger = get_logger(__name__)
 
@@ -63,7 +62,10 @@ def ingest_stocks(
     logger.info("INGEST STOCKS")
     logger.info("=" * 60)
     
-    # Connect to database
+    # Connect to database (lazy import to avoid hard dependency during tooling/tests)
+    from storage.postgres.pgConn import PgConn
+    from storage.postgres import PostgresSQL_table_queries
+
     pg_conn = PgConn(PostgresSQL_table_queries.HISTORICAL_CRYPTO_STOCKS_TABLE_NAME)
     
     # Get data with optional book filter
@@ -144,7 +146,10 @@ def ingest_news(
     logger.info("INGEST NEWS")
     logger.info("=" * 60)
     
-    # Connect to database
+    # Connect to database (lazy import to avoid hard dependency during tooling/tests)
+    from storage.postgres.pgConn import PgConn
+    from storage.postgres import PostgresSQL_table_queries
+
     table_name = PostgresSQL_table_queries.FINANCIAL_NEWS_TABLE_NAME
     pg_conn = PgConn(table_name)
     
@@ -467,7 +472,6 @@ def export_genai_to_s3_from_db(
         logger.info("Generating embeddings for GenAI export...")
         df = generate_embeddings(df)
 
-    from export.genai_export import export_to_s3_jsonl
     from pipelines.etl_transform import build_s3_key_news_batch
 
     settings = get_settings()
