@@ -443,8 +443,11 @@ def export_genai(
 
 def export_genai_to_s3_from_db(
     date: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
     include_embeddings: bool = False,
     batch_types: Optional[List[str]] = None,
+    use_agentic_only: bool = False,
 ) -> List[str]:
     """
     End-to-end helper: extract news from Postgres, transform, export to JSONL, and upload to S3.
@@ -456,16 +459,43 @@ def export_genai_to_s3_from_db(
          mirroring the CSV transformed-news batch convention (run/week/month/year/day).
 
     Args:
-        date: Optional date filter (YYYY-MM-DD) for news ingestion.
+        date: Optional date filter (YYYY-MM-DD) for news ingestion (single day).
+        since: Optional start date (YYYY-MM-DD) for range ingestion (used when use_agentic_only=True).
+        until: Optional end date (YYYY-MM-DD) for range ingestion (used when use_agentic_only=True).
         include_embeddings: Whether to generate and include embeddings.
         batch_types: Optional list of batch types to export: any of
             ['run', 'week', 'month', 'year', 'day']. Defaults to ['day'].
+        use_agentic_only: If True, skip VADER/NLTK sentiment and run the
+            agentic-only enrichment path (FinancialMetricsTask) over
+            ingest_news(since, until) results, similar to the main ETL notebook.
 
     Returns:
         List of S3 URIs of the uploaded JSONL files (one per batch_type/partition).
     """
-    # Reuse transform_news so we leverage the existing ETL transformation logic.
-    df = transform_news(date=date)
+    # Choose data source and transformation path.
+    if use_agentic_only:
+        # Agentic-only path: reuse the same components as ETL-Transform-Text.ipynb
+        from pipelines.etl_cli import ingest_news as _ingest_news
+        from agents.registry import get_llm_client
+        from agents.transforms.agentic_transform import AgenticTextEnricher, FinancialMetricsTask
+
+        # Prefer SINCE/UNTIL if provided; fall back to single date.
+        ingest_since = since or date
+        ingest_until = until or ingest_since
+
+        df_raw = _ingest_news(date=None, since=ingest_since, until=ingest_until)
+        if df_raw is None or df_raw.empty:
+            df = pd.DataFrame()
+        else:
+            settings = get_settings()
+            provider = getattr(settings.agent, "provider", "openai")
+            client = get_llm_client(provider)
+            enricher = AgenticTextEnricher(client=client, task=FinancialMetricsTask())
+            df = enricher.enrich_dataframe(df_raw, max_rows=None)
+    else:
+        # Reuse transform_news so we leverage the existing ETL transformation logic
+        # (VADER sentiment, intent, keywords, tickers). This path requires nltk.
+        df = transform_news(date=date, since=since, until=until)
 
     if include_embeddings:
         from export.genai_export import generate_embeddings
@@ -483,8 +513,11 @@ def export_genai_to_s3_from_db(
     if batch_types is None:
         batch_types = ["day"]
 
-    # Determine a representative partition datetime.
-    if date:
+    # Determine a representative partition datetime for S3 keys.
+    # Prefer SINCE, then DATE, then current time.
+    if since:
+        part_dt = pd.to_datetime(since).to_pydatetime()
+    elif date:
         part_dt = pd.to_datetime(date).to_pydatetime()
     else:
         part_dt = datetime.utcnow()

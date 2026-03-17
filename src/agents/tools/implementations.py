@@ -284,18 +284,23 @@ def run_stocks_transform(
 
 def export_genai_jsonl(
     date: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
     include_embeddings: bool = False,
     batch_types: Optional[List[str]] = None,
+    use_agentic_only: bool = False,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Export transformed financial news from Postgres to JSONL on S3 for GenAI/RAG.
 
     This calls the production helper export_genai_to_s3_from_db, which:
-    - loads news from PostgreSQL for the given date
-    - runs the standard news transformation pipeline
+    - loads news from PostgreSQL for the given date or date range
+    - runs the standard news transformation pipeline (or, if use_agentic_only=True,
+      the agentic-only enrichment path using FinancialMetricsTask)
     - optionally generates embeddings
-    - uploads a partitioned JSONL file to S3 under genai/news/year=YYYY/month=MM/day=DD/format=jsonl/
+    - uploads partitioned JSONL files to S3 under
+      news/transformed/crypto/agentic=true/year=YYYY/month=MM/day=DD/format=jsonl/
     """
     from pipelines.etl_cli import export_genai_to_s3_from_db
 
@@ -307,22 +312,31 @@ def export_genai_jsonl(
     try:
         uris = export_genai_to_s3_from_db(
             date=date,
+             since=since,
+             until=until,
             include_embeddings=include_embeddings,
             batch_types=batch_types,
+            use_agentic_only=use_agentic_only,
         )
         return {
             "s3_uris": uris,
             "date": date,
+            "since": since,
+            "until": until,
             "include_embeddings": include_embeddings,
             "batch_types": batch_types,
+            "use_agentic_only": use_agentic_only,
             "message": "GenAI JSONL export completed",
         }
     except Exception as e:
         return {
             "error": str(e),
             "date": date,
+            "since": since,
+            "until": until,
             "include_embeddings": include_embeddings,
             "batch_types": batch_types,
+            "use_agentic_only": use_agentic_only,
         }
 
 

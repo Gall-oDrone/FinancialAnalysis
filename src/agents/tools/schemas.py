@@ -399,7 +399,7 @@ EXPORT_GENAI_JSONL_SCHEMA = {
     "name": "export_genai_jsonl",
     "description": (
         "Export transformed financial news from PostgreSQL to JSONL on S3 for GenAI/RAG. "
-        "Loads news for a given date, runs the standard text transformations, optionally "
+        "Loads news for a given date or date range, runs the standard text transformations (or the agentic-only path), optionally "
         "adds embeddings, and writes partitioned JSONL files under "
         "news/transformed/crypto/agentic=true/year=YYYY/month=MM/day=DD/format=jsonl/ "
         "with the same batch conventions as transformed CSV (run/week/month/year/day)."
@@ -409,7 +409,15 @@ EXPORT_GENAI_JSONL_SCHEMA = {
         "properties": {
             "date": {
                 "type": "string",
-                "description": "Single date (YYYY-MM-DD) to filter news before export.",
+                "description": "Single date (YYYY-MM-DD) to filter news before export (non-agentic path).",
+            },
+            "since": {
+                "type": "string",
+                "description": "Start date (YYYY-MM-DD) for range ingestion (agentic-only path).",
+            },
+            "until": {
+                "type": "string",
+                "description": "End date (YYYY-MM-DD) for range ingestion (agentic-only path).",
             },
             "include_embeddings": {
                 "type": "boolean",
@@ -419,6 +427,10 @@ EXPORT_GENAI_JSONL_SCHEMA = {
                 "type": "array",
                 "items": {"type": "string", "enum": ["run", "week", "month", "year", "day"]},
                 "description": "Optional batch types to export: any of ['run', 'week', 'month', 'year', 'day']. Default is all.",
+            },
+            "use_agentic_only": {
+                "type": "boolean",
+                "description": "If true, skip VADER/NLTK sentiment and use the agentic-only enrichment path (FinancialMetricsTask).",
             },
         },
         "required": [],
