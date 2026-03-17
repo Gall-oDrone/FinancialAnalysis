@@ -35,6 +35,7 @@ try:
         find_element_with_fallbacks_return_selector,
         find_element_with_fallbacks_or_save_dom,
     )
+    from WebScraping.src.selectors import UL_STREAM_ITEMS_BY_CLASS, UL_STREAM_ITEMS_yf_ydpc1, UL_STREAM_ITEMS_yf_9xydx9
 except ImportError:
     from ..selectors.stock_collector_selectors import (
         YahooFinanceStockSelectors,
@@ -42,6 +43,7 @@ except ImportError:
         find_element_with_fallbacks_return_selector,
         find_element_with_fallbacks_or_save_dom,
     )
+    from ..selectors import UL_STREAM_ITEMS_BY_CLASS, UL_STREAM_ITEMS_yf_ydpc1, UL_STREAM_ITEMS_yf_9xydx9
 
 
 class Scrapper:
@@ -536,11 +538,25 @@ class NewsScrapper(Scrapper):
                 print("error couldn't load full news article:", e)
                 
     def selectUnorderList(self, html_element=''):
-        html_element='/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[3]/div/div/div/ul'
         show_text = False
         print("In selectUnorderList method")
-        print("html element:", html_element)
-        ul_element = self.driver.find_element(By.XPATH, html_element)
+        # Wait for the news stream ul (class "stream-items yf-ydpc1" or similar); it is loaded by JS.
+        stream_ul_xpaths = [
+            (UL_STREAM_ITEMS_BY_CLASS, 15),
+            (UL_STREAM_ITEMS_yf_ydpc1, 5),
+            (UL_STREAM_ITEMS_yf_9xydx9, 5),
+        ]
+        ul_element = None
+        for xpath, timeout in stream_ul_xpaths:
+            try:
+                wait = WebDriverWait(self.driver, timeout)
+                ul_element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                print("html element (stream-items ul):", xpath[:60] + "..." if len(xpath) > 60 else xpath)
+                break
+            except (TimeoutException, NoSuchElementException):
+                continue
+        if ul_element is None:
+            raise NoSuchElementException("Could not find stream-items ul with any of: " + str([p for p, _ in stream_ul_xpaths]))
         list_items = ul_element.find_elements(By.TAG_NAME, 'li')
         # Loop through each list item
         for li in list_items:

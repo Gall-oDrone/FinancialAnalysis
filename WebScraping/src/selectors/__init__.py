@@ -14,6 +14,8 @@ from .YahooFinanceHTMLElements import (
     SECTION_CONTAINER_yf_1ce4p3e,
     UL_STREAM_ITEMS_yf_1drgw5l,
     UL_STREAM_ITEMS_yf_9xydx9,
+    UL_STREAM_ITEMS_yf_ydpc1,
+    UL_STREAM_ITEMS_BY_CLASS,
 )
 
 __all__ = [
@@ -26,4 +28,6 @@ __all__ = [
     "SECTION_CONTAINER_yf_1ce4p3e",
     "UL_STREAM_ITEMS_yf_1drgw5l",
     "UL_STREAM_ITEMS_yf_9xydx9",
+    "UL_STREAM_ITEMS_yf_ydpc1",
+    "UL_STREAM_ITEMS_BY_CLASS",
 ]
