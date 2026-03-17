@@ -285,6 +285,7 @@ def run_stocks_transform(
 def export_genai_jsonl(
     date: Optional[str] = None,
     include_embeddings: bool = False,
+    batch_types: Optional[List[str]] = None,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """
@@ -298,12 +299,22 @@ def export_genai_jsonl(
     """
     from pipelines.etl_cli import export_genai_to_s3_from_db
 
+    # If caller does not specify batch_types, mirror the full transformed-news
+    # batch options: run, week, month, year, day.
+    if batch_types is None:
+        batch_types = ["run", "week", "month", "year", "day"]
+
     try:
-        s3_uri = export_genai_to_s3_from_db(date=date, include_embeddings=include_embeddings)
+        uris = export_genai_to_s3_from_db(
+            date=date,
+            include_embeddings=include_embeddings,
+            batch_types=batch_types,
+        )
         return {
-            "s3_uri": s3_uri,
+            "s3_uris": uris,
             "date": date,
             "include_embeddings": include_embeddings,
+            "batch_types": batch_types,
             "message": "GenAI JSONL export completed",
         }
     except Exception as e:
@@ -311,6 +322,7 @@ def export_genai_jsonl(
             "error": str(e),
             "date": date,
             "include_embeddings": include_embeddings,
+            "batch_types": batch_types,
         }
 
 

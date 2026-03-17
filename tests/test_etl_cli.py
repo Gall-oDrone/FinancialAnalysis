@@ -42,22 +42,25 @@ class TestExportGenaiToS3FromDb:
         settings.aws.default_bucket = "test-bucket"
         mock_get_settings.return_value = settings
 
-        mock_export_to_s3_jsonl.return_value = "s3://test-bucket/genai/news/year=2026/month=03/day=17/format=jsonl/news_genai_20260317_000000.jsonl"
+        mock_export_to_s3_jsonl.return_value = (
+            "s3://test-bucket/news/transformed/crypto/agentic=true/"
+            "year=2026/month=03/day=17/format=jsonl/news_transformed_y2026_m03_d17.jsonl"
+        )
 
         # Act
-        uri = export_genai_to_s3_from_db(date="2026-01-27")
+        uris = export_genai_to_s3_from_db(date="2026-01-27")
 
         # Assert
-        assert uri == mock_export_to_s3_jsonl.return_value
+        assert uris == [mock_export_to_s3_jsonl.return_value]
 
         # Inspect call to export_to_s3_jsonl to verify prefix structure
         args, kwargs = mock_export_to_s3_jsonl.call_args
         # Signature: (df, bucket_name, prefix_path, file_name, include_embeddings=False)
         prefix_path = kwargs.get("prefix_path") or args[2]
 
-        assert "genai/news" in prefix_path
-        assert "year=" in prefix_path
-        assert "month=" in prefix_path
-        assert "day=" in prefix_path
+        assert prefix_path.startswith("news/transformed/crypto/agentic=true/")
+        assert "year=2026" in prefix_path
+        assert "month=03" in prefix_path
+        assert "day=17" in prefix_path
         assert "format=jsonl" in prefix_path
 

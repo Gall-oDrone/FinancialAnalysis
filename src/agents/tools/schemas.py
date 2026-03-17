@@ -400,8 +400,9 @@ EXPORT_GENAI_JSONL_SCHEMA = {
     "description": (
         "Export transformed financial news from PostgreSQL to JSONL on S3 for GenAI/RAG. "
         "Loads news for a given date, runs the standard text transformations, optionally "
-        "adds embeddings, and writes a partitioned JSONL file under "
-        "genai/news/year=YYYY/month=MM/day=DD/format=jsonl/."
+        "adds embeddings, and writes partitioned JSONL files under "
+        "news/transformed/crypto/agentic=true/year=YYYY/month=MM/day=DD/format=jsonl/ "
+        "with the same batch conventions as transformed CSV (run/week/month/year/day)."
     ),
     "input_schema": {
         "type": "object",
@@ -413,6 +414,11 @@ EXPORT_GENAI_JSONL_SCHEMA = {
             "include_embeddings": {
                 "type": "boolean",
                 "description": "Whether to generate and include embedding vectors in the JSONL.",
+            },
+            "batch_types": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["run", "week", "month", "year", "day"]},
+                "description": "Optional batch types to export: any of ['run', 'week', 'month', 'year', 'day']. Default is all.",
             },
         },
         "required": [],

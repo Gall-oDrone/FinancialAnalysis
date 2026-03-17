@@ -439,17 +439,25 @@ def export_genai(
 def export_genai_to_s3_from_db(
     date: Optional[str] = None,
     include_embeddings: bool = False,
-) -> str:
+    batch_types: Optional[List[str]] = None,
+) -> List[str]:
     """
     End-to-end helper: extract news from Postgres, transform, export to JSONL, and upload to S3.
 
     This is equivalent to running:
       1) ingest-news/transform-news for the given date
       2) export to JSONL
-      3) upload the JSONL file to S3 under a partitioned path with format=jsonl.
+      3) upload one or more JSONL files to S3 under partitioned paths with format=jsonl,
+         mirroring the CSV transformed-news batch convention (run/week/month/year/day).
+
+    Args:
+        date: Optional date filter (YYYY-MM-DD) for news ingestion.
+        include_embeddings: Whether to generate and include embeddings.
+        batch_types: Optional list of batch types to export: any of
+            ['run', 'week', 'month', 'year', 'day']. Defaults to ['day'].
 
     Returns:
-        S3 URI of the uploaded JSONL file.
+        List of S3 URIs of the uploaded JSONL files (one per batch_type/partition).
     """
     # Reuse transform_news so we leverage the existing ETL transformation logic.
     df = transform_news(date=date)
@@ -467,34 +475,45 @@ def export_genai_to_s3_from_db(
     if not bucket:
         raise RuntimeError("AWS default bucket is not configured; cannot export GenAI JSONL to S3.")
 
-    # Use the same S3 path convention as transformed news batch (day partition),
-    # but with format=jsonl instead of format=csv, and agentic=true segment.
+    # Default to day-partitioned batch if not specified
+    if batch_types is None:
+        batch_types = ["day"]
+
+    # Determine a representative partition datetime.
     if date:
         part_dt = pd.to_datetime(date).to_pydatetime()
     else:
         part_dt = datetime.utcnow()
 
-    csv_key = build_s3_key_news_batch("day", part_dt, agentic=True)
-    # Example csv_key:
-    # news/transformed/crypto/agentic=true/year=2025/month=05/day=08/format=csv/news_transformed_y2025_m05_d08.csv
-    prefix_path, csv_file = csv_key.rsplit("/", 1)
-    prefix_path = prefix_path.replace("format=csv", "format=jsonl")
-    file_name = csv_file.replace(".csv", "")
+    uris: List[str] = []
 
-    logger.info(
-        "Exporting GenAI JSONL to S3 from DB (date=%s) with key pattern based on %s",
-        date,
-        csv_key,
-    )
-    s3_uri = export_to_s3_jsonl(
-        df,
-        bucket_name=bucket,
-        prefix_path=prefix_path,
-        file_name=file_name,
-        include_embeddings=include_embeddings,
-    )
-    logger.info("GenAI JSONL export complete: %s", s3_uri)
-    return s3_uri
+    for batch_type in batch_types:
+        # Use the same S3 path convention as transformed news batch,
+        # but with format=jsonl instead of format=csv, and agentic=true segment.
+        csv_key = build_s3_key_news_batch(batch_type, part_dt, agentic=True)
+        # Example csv_key (day):
+        # news/transformed/crypto/agentic=true/year=2025/month=05/day=08/format=csv/news_transformed_y2025_m05_d08.csv
+        prefix_path, csv_file = csv_key.rsplit("/", 1)
+        prefix_path = prefix_path.replace("format=csv", "format=jsonl")
+        file_name = csv_file.replace(".csv", "")
+
+        logger.info(
+            "Exporting GenAI JSONL to S3 from DB (date=%s, batch_type=%s) with key pattern based on %s",
+            date,
+            batch_type,
+            csv_key,
+        )
+        s3_uri = export_to_s3_jsonl(
+            df,
+            bucket_name=bucket,
+            prefix_path=prefix_path,
+            file_name=file_name,
+            include_embeddings=include_embeddings,
+        )
+        logger.info("GenAI JSONL export complete: %s", s3_uri)
+        uris.append(s3_uri)
+
+    return uris
 
 
 # ============================================================================
