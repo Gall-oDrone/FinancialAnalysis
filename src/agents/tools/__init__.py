@@ -27,6 +27,7 @@ _HANDLERS: Dict[str, Callable[..., Dict[str, Any]]] = {
     "run_news_transform": impl.run_news_transform,
     "run_stocks_transform": impl.run_stocks_transform,
     "enrich_article": impl.enrich_article,
+    "export_genai_jsonl": impl.export_genai_jsonl,
     "batch_tool": impl.batch_tool,
 }
 

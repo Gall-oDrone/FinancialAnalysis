@@ -395,6 +395,30 @@ ENRICH_ARTICLE_SCHEMA = {
     },
 }
 
+EXPORT_GENAI_JSONL_SCHEMA = {
+    "name": "export_genai_jsonl",
+    "description": (
+        "Export transformed financial news from PostgreSQL to JSONL on S3 for GenAI/RAG. "
+        "Loads news for a given date, runs the standard text transformations, optionally "
+        "adds embeddings, and writes a partitioned JSONL file under "
+        "genai/news/year=YYYY/month=MM/day=DD/format=jsonl/."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "date": {
+                "type": "string",
+                "description": "Single date (YYYY-MM-DD) to filter news before export.",
+            },
+            "include_embeddings": {
+                "type": "boolean",
+                "description": "Whether to generate and include embedding vectors in the JSONL.",
+            },
+        },
+        "required": [],
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Batch / meta tool
 # ---------------------------------------------------------------------------
@@ -445,6 +469,7 @@ def get_all_schemas():
         RUN_NEWS_TRANSFORM_SCHEMA,
         RUN_STOCKS_TRANSFORM_SCHEMA,
         ENRICH_ARTICLE_SCHEMA,
+        EXPORT_GENAI_JSONL_SCHEMA,
         BATCH_TOOL_SCHEMA,
     ]
 

@@ -282,6 +282,38 @@ def run_stocks_transform(
     }
 
 
+def export_genai_jsonl(
+    date: Optional[str] = None,
+    include_embeddings: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """
+    Export transformed financial news from Postgres to JSONL on S3 for GenAI/RAG.
+
+    This calls the production helper export_genai_to_s3_from_db, which:
+    - loads news from PostgreSQL for the given date
+    - runs the standard news transformation pipeline
+    - optionally generates embeddings
+    - uploads a partitioned JSONL file to S3 under genai/news/year=YYYY/month=MM/day=DD/format=jsonl/
+    """
+    from pipelines.etl_cli import export_genai_to_s3_from_db
+
+    try:
+        s3_uri = export_genai_to_s3_from_db(date=date, include_embeddings=include_embeddings)
+        return {
+            "s3_uri": s3_uri,
+            "date": date,
+            "include_embeddings": include_embeddings,
+            "message": "GenAI JSONL export completed",
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "date": date,
+            "include_embeddings": include_embeddings,
+        }
+
+
 def enrich_article(
     headline: str,
     content: Optional[str] = None,
