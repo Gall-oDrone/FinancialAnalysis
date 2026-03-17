@@ -332,7 +332,7 @@ class GenAIExportStageHandler(PipelineStageHandler):
         if data.empty:
             logger.warning("No data to export")
             return data
-        
+
         from export.genai_export import export_to_s3_jsonl
         from datetime import datetime
         
@@ -340,11 +340,11 @@ class GenAIExportStageHandler(PipelineStageHandler):
             logger.warning("No S3 bucket configured, skipping GenAI export")
             return data
         
-        # Generate timestamp-based path
+        # Generate timestamp-based partitioned path; JSONL uses format=jsonl in the prefix
         now = datetime.now()
         date_path = f"year={now.year}/month={now.month:02}/day={now.day:02}"
         timestamp = now.strftime("%Y%m%d_%H%M%S")
-        
+
         prefix_path = f"genai/news/{date_path}"
         file_name = f"news_genai_{timestamp}"
         

@@ -24,11 +24,19 @@ def _ensure_nltk_data():
 _ensure_nltk_data()
 import numpy as np
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+try:
+    # Python 3 standard library
+    from unittest.mock import Mock, patch
+except ImportError:
+    # Fallback for environments that provide mock as a separate package
+    from mock import Mock, patch
 
 # Add src to path for imports (production layout)
 import sys
-from pathlib import Path
+try:
+    from pathlib import Path  # Python 3
+except ImportError:
+    from pathlib2 import Path  # Python 2 fallback
 
 project_root = Path(__file__).parent.parent
 src_path = project_root / "src"

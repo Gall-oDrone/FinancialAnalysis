@@ -4,7 +4,10 @@ Integration tests for data pipeline.
 
 import pytest
 import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
+try:
+    from unittest.mock import Mock, patch, MagicMock  # Python 3
+except ImportError:
+    from mock import Mock, patch, MagicMock  # Python 2 fallback
 
 from pipelines.pipeline import (
     DataPipeline,

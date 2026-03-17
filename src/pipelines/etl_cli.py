@@ -417,9 +417,12 @@ def export_genai(
         
         settings = get_settings()
         if settings.aws.default_bucket:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            now = datetime.now()
+            timestamp = now.strftime("%Y%m%d_%H%M%S")
+            # Use partitioned path similar to CSV exports, but with format=jsonl
+            date_path = f"year={now.year}/month={now.month:02}/day={now.day:02}"
             file_name = f"news_genai_{timestamp}"
-            prefix = "genai/news"
+            prefix = f"genai/news/{date_path}"
             
             export_to_s3_jsonl(
                 df,
@@ -431,6 +434,54 @@ def export_genai(
     
     logger.info(f"GenAI export complete: {count} records")
     return count
+
+
+def export_genai_to_s3_from_db(
+    date: Optional[str] = None,
+    include_embeddings: bool = False,
+) -> str:
+    """
+    End-to-end helper: extract news from Postgres, transform, export to JSONL, and upload to S3.
+
+    This is equivalent to running:
+      1) ingest-news/transform-news for the given date
+      2) export to JSONL
+      3) upload the JSONL file to S3 under a partitioned path with format=jsonl.
+
+    Returns:
+        S3 URI of the uploaded JSONL file.
+    """
+    # Reuse transform_news so we leverage the existing ETL transformation logic.
+    df = transform_news(date=date)
+
+    if include_embeddings:
+        from export.genai_export import generate_embeddings
+        logger.info("Generating embeddings for GenAI export...")
+        df = generate_embeddings(df)
+
+    from export.genai_export import export_to_s3_jsonl
+
+    settings = get_settings()
+    bucket = settings.aws.default_bucket
+    if not bucket:
+        raise RuntimeError("AWS default bucket is not configured; cannot export GenAI JSONL to S3.")
+
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    date_path = f"year={now.year}/month={now.month:02}/day={now.day:02}"
+    prefix = f"genai/news/{date_path}"
+    file_name = f"news_genai_{timestamp}"
+
+    logger.info("Exporting GenAI JSONL to S3 from DB (date=%s)", date)
+    s3_uri = export_to_s3_jsonl(
+        df,
+        bucket_name=bucket,
+        prefix_path=prefix,
+        file_name=file_name,
+        include_embeddings=include_embeddings,
+    )
+    logger.info("GenAI JSONL export complete: %s", s3_uri)
+    return s3_uri
 
 
 # ============================================================================

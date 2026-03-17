@@ -141,6 +141,10 @@ class GenAITextPreparator:
             # Use mapped export name when source field has one
             source_field = next((k for k, v in field_map.items() if v == field), field)
             export_name = field_map.get(source_field, field)
+
+            # Skip llm_financial_metrics as it is duplicated in other headers/fields
+            if source_field == "llm_financial_metrics":
+                continue
             
             if source_field not in row.index:
                 continue
@@ -356,6 +360,10 @@ def export_to_s3_jsonl(
     
     export_to_jsonl(df, tmp_path, include_embeddings=include_embeddings)
     
+    # Normalize prefix path to include format=jsonl segment if not already present
+    if "format=" not in prefix_path:
+        prefix_path = f"{prefix_path.rstrip('/')}/format=jsonl"
+
     # Upload to S3
     aws = CloudStorageProvider.AWS()
     s3_key = f"{prefix_path}/{file_name}.jsonl"

@@ -6,7 +6,10 @@ import pytest
 import pandas as pd
 import json
 import tempfile
-from pathlib import Path
+try:
+    from pathlib import Path  # Python 3
+except ImportError:
+    from pathlib2 import Path  # Python 2 fallback
 
 from export.genai_export import (
     GenAIArticle,
@@ -105,6 +108,19 @@ Bitcoin surged past $100,000 today as institutional adoption continues."""
         assert 'source' in metadata
         assert 'tickers' in metadata
         assert 'datetime' not in metadata  # Not in custom fields
+    
+    def test_create_metadata_skips_llm_financial_metrics(self, sample_transformed_news_df):
+        """llm_financial_metrics should not be included in metadata JSONL export."""
+        row = sample_transformed_news_df.iloc[0].copy()
+        row["llm_financial_metrics"] = {"event_type": "macro", "overall_sentiment": 0.5}
+
+        metadata = GenAITextPreparator.create_metadata(
+            row,
+            include_fields=['source', 'llm_financial_metrics']
+        )
+
+        assert 'source' in metadata
+        assert 'llm_financial_metrics' not in metadata
 
 
 class TestJSONLExport:
@@ -258,8 +274,9 @@ class TestMockS3Upload:
                     file_name="test_export",
                     include_embeddings=False
                 )
-                
-                assert s3_uri.startswith("s3://test-bucket/genai/news")
+
+                assert s3_uri.startswith("s3://test-bucket/genai/news/")
+                assert "/format=jsonl/" in s3_uri
                 assert mock_s3.upload_file.called
                 
             except Exception as e:
