@@ -505,9 +505,13 @@ def export_genai_to_s3_from_db(
     from pipelines.etl_transform import build_s3_key_news_batch
 
     settings = get_settings()
-    bucket = settings.aws.default_bucket
+    # Prefer dedicated news bucket; fall back to default bucket if not set.
+    bucket = getattr(settings.aws, "news_bucket", None) or settings.aws.default_bucket
     if not bucket:
-        raise RuntimeError("AWS default bucket is not configured; cannot export GenAI JSONL to S3.")
+        raise RuntimeError(
+            "No news S3 bucket configured; set AWS_NEWS_BUCKET or AWS_DEFAULT_BUCKET in .env "
+            "to enable GenAI JSONL export."
+        )
 
     # Default to day-partitioned batch if not specified
     if batch_types is None:
