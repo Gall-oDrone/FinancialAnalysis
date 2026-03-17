@@ -460,23 +460,36 @@ def export_genai_to_s3_from_db(
         df = generate_embeddings(df)
 
     from export.genai_export import export_to_s3_jsonl
+    from pipelines.etl_transform import build_s3_key_news_batch
 
     settings = get_settings()
     bucket = settings.aws.default_bucket
     if not bucket:
         raise RuntimeError("AWS default bucket is not configured; cannot export GenAI JSONL to S3.")
 
-    now = datetime.now()
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    date_path = f"year={now.year}/month={now.month:02}/day={now.day:02}"
-    prefix = f"genai/news/{date_path}"
-    file_name = f"news_genai_{timestamp}"
+    # Use the same S3 path convention as transformed news batch (day partition),
+    # but with format=jsonl instead of format=csv, and agentic=true segment.
+    if date:
+        part_dt = pd.to_datetime(date).to_pydatetime()
+    else:
+        part_dt = datetime.utcnow()
 
-    logger.info("Exporting GenAI JSONL to S3 from DB (date=%s)", date)
+    csv_key = build_s3_key_news_batch("day", part_dt, agentic=True)
+    # Example csv_key:
+    # news/transformed/crypto/agentic=true/year=2025/month=05/day=08/format=csv/news_transformed_y2025_m05_d08.csv
+    prefix_path, csv_file = csv_key.rsplit("/", 1)
+    prefix_path = prefix_path.replace("format=csv", "format=jsonl")
+    file_name = csv_file.replace(".csv", "")
+
+    logger.info(
+        "Exporting GenAI JSONL to S3 from DB (date=%s) with key pattern based on %s",
+        date,
+        csv_key,
+    )
     s3_uri = export_to_s3_jsonl(
         df,
         bucket_name=bucket,
-        prefix_path=prefix,
+        prefix_path=prefix_path,
         file_name=file_name,
         include_embeddings=include_embeddings,
     )

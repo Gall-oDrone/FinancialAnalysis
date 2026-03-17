@@ -40,7 +40,7 @@ All tools are implemented in `src/agents/tools/` and share the same schemas and 
 | **run_news_transform** | Full news transform pipeline: ingest → sentiment/intent/keywords/tickers → optional save to Postgres. Input: `date` or `since`/`until`, `save_to_postgres`, `sentiment_backend`, `extract_tickers`. |
 | **run_stocks_transform** | Full stocks transform: ingest → returns/volatility/indicators → optional save/upload. Input: `since`, `until`, `books`, `warmup_days`, `save_to_postgres`, `upload_s3`. |
 | **enrich_article** | Enrich one article with LLM (summary + themes, or financial metrics). Input: `headline`, `content`/`summary`, optional `tickers`, `task` (summary_themes / financial_metrics). Requires LLM config. |
-| **export_genai_jsonl** | Export transformed financial news from PostgreSQL to JSONL on S3 for GenAI/RAG. Input: optional `date` and `include_embeddings`. Writes to `genai/news/year=YYYY/month=MM/day=DD/format=jsonl/`. |
+| **export_genai_jsonl** | Export transformed financial news from PostgreSQL to JSONL on S3 for GenAI/RAG. Input: optional `date` and `include_embeddings`. Writes to `news/transformed/crypto/agentic=true/year=YYYY/month=MM/day=DD/format=jsonl/news_transformed_yYYYY_mMM_dDD.jsonl`. |
 
 ### 2.3 Batch / meta
 
