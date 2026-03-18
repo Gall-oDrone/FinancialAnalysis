@@ -95,6 +95,8 @@ Thumbs.db
 *~
 
 # Project specific
+# Local DOM analysis exports (do not commit)
+WebScraping/data/analysis/dom_analysis_report*
 dom_tree*.html
 *.html
 unavailable_books.csv

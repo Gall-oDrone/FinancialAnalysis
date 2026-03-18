@@ -133,7 +133,7 @@ class FinancialMetricsTask(EnrichmentTask):
     Production-grade financial feature extraction for trading/ML.
 
     Extracts: numeric scores (overall_sentiment, forward_sentiment, surprise_score,
-    risk_score, uncertainty_score, impact_strength, immediacy, confidence),
+    risk_score, uncertainty_score, impact_strength, immediacy, confidence, novelty_score),
     event_type, impact_horizon, sentiment_label, impact_level, signal, actionable,
     sectors, entities (→ llm_entities), key_facts.
     All numeric scores in [-1, 1], confidence in [0, 1]. Returns strict JSON only.
@@ -162,7 +162,8 @@ class FinancialMetricsTask(EnrichmentTask):
             "- uncertainty_score: ambiguity or lack of clarity (high => expect volatility).\n"
             "- impact_strength: expected magnitude of market reaction.\n"
             "- immediacy: expected speed of price reaction (1.0=instant, 0.2=slow thematic).\n"
-            "- confidence: your self-assessed clarity of the signal (0–1).\n\n"
+            "- confidence: your self-assessed clarity of the signal (0–1).\n"
+            "- novelty_score: how novel or incremental the news is vs prior coverage (1.0=breaking/new, -1.0=rehash).\n\n"
             "Categorical fields (use only allowed values):\n"
             "- sentiment_label: overall tone classification.\n"
             "- impact_level: expected market impact magnitude (high/medium/low).\n"
@@ -209,6 +210,7 @@ class FinancialMetricsTask(EnrichmentTask):
             '"immediacy": 0.0,\n'
             '"impact_horizon": "",\n'
             '"confidence": 0.0,\n'
+            '"novelty_score": 0.0,\n'
             '"sentiment_label": "",\n'
             '"impact_level": "",\n'
             '"signal": "",\n'
@@ -459,7 +461,8 @@ class FinancialMetricsTask(EnrichmentTask):
                 "llm_ticker": None, "llm_event_type": None, "llm_overall_sentiment": None,
                 "llm_forward_sentiment": None, "llm_surprise_score": None, "llm_risk_score": None,
                 "llm_uncertainty_score": None, "llm_impact_strength": None, "llm_immediacy": None,
-                "llm_impact_horizon": None, "llm_confidence": None, "llm_sentiment_label": None,
+                "llm_impact_horizon": None, "llm_confidence": None, "llm_novelty_score": None,
+                "llm_sentiment_label": None,
                 "llm_impact_level": None, "llm_signal": None, "llm_actionable": None,
                 "llm_sectors": [], "llm_key_facts": [],
             }
@@ -498,6 +501,7 @@ class FinancialMetricsTask(EnrichmentTask):
             "immediacy": self._clamp_score(obj.get("immediacy")),
             "impact_horizon": impact_horizon,
             "confidence": self._clamp_confidence(obj.get("confidence")),
+            "novelty_score": self._clamp_score(obj.get("novelty_score")),
             "sentiment_label": sentiment_label,
             "impact_level": impact_level,
             "signal": signal,
@@ -520,6 +524,7 @@ class FinancialMetricsTask(EnrichmentTask):
         out["llm_immediacy"] = metrics.get("immediacy")
         out["llm_impact_horizon"] = metrics.get("impact_horizon")
         out["llm_confidence"] = metrics.get("confidence")
+        out["llm_novelty_score"] = metrics.get("novelty_score")
         out["llm_sentiment_label"] = metrics.get("sentiment_label")
         out["llm_impact_level"] = metrics.get("impact_level")
         out["llm_signal"] = metrics.get("signal")

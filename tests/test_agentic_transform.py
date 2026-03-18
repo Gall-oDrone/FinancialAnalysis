@@ -221,6 +221,7 @@ class TestFinancialMetricsTask:
             "immediacy": 0.0,
             "impact_horizon": "short_term",
             "confidence": 0.8,
+            "novelty_score": 0.6,
             "sentiment_label": "positive",
             "impact_level": "high",
             "signal": "bullish",
@@ -231,6 +232,7 @@ class TestFinancialMetricsTask:
         }
         out = task.parse_response(json.dumps(payload))
         m = out["llm_financial_metrics"]
+        assert m["novelty_score"] == 0.6
         assert m["sentiment_label"] == "positive"
         assert m["impact_level"] == "high"
         assert m["signal"] == "bullish"
@@ -241,6 +243,7 @@ class TestFinancialMetricsTask:
         assert out["llm_entities"] == ["Fed", "Bitcoin"]
         # Flattened columns (one per feature for DB/S3)
         assert out["llm_overall_sentiment"] == 0.0
+        assert out["llm_novelty_score"] == 0.6
         assert out["llm_sentiment_label"] == "positive"
         assert out["llm_signal"] == "bullish"
         assert out["llm_actionable"] is True

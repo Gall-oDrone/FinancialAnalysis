@@ -467,7 +467,7 @@ class SaveToDBStageHandler(PipelineStageHandler):
             "llm_summary", "llm_themes", "llm_entities", "llm_financial_metrics", "llm_error", "agentic_enabled",
             "llm_ticker", "llm_event_type", "llm_overall_sentiment", "llm_forward_sentiment",
             "llm_surprise_score", "llm_risk_score", "llm_uncertainty_score", "llm_impact_strength",
-            "llm_immediacy", "llm_impact_horizon", "llm_confidence", "llm_sentiment_label",
+            "llm_immediacy", "llm_impact_horizon", "llm_confidence", "llm_novelty_score", "llm_sentiment_label",
             "llm_impact_level", "llm_signal", "llm_actionable", "llm_sectors", "llm_key_facts",
         ]
         

@@ -98,6 +98,7 @@ FINANCIAL_NEWS_TRANSFORMED_TABLE_QUERY = """
                 llm_immediacy FLOAT,
                 llm_impact_horizon VARCHAR(50),
                 llm_confidence FLOAT,
+                llm_novelty_score FLOAT,
                 llm_sentiment_label VARCHAR(20),
                 llm_impact_level VARCHAR(20),
                 llm_signal VARCHAR(20),

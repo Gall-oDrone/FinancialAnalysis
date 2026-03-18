@@ -122,10 +122,16 @@ class GenAITextPreparator:
         """
         if include_fields is None:
             include_fields = [
-                'source', 'datetime', 'url', 'tickers', 
+                'source', 'datetime', 'url', 'tickers',
                 'sentiment_label', 'sentiment_score',
                 'primary_intent', 'intent_confidence',
-                'keywords', 'entities', 'author', 'word_count'
+                'keywords', 'entities', 'author', 'word_count',
+                # Flattened llm_financial_metrics (agentic) fields
+                'llm_summary', 'llm_themes', 'llm_entities',
+                'llm_ticker', 'llm_event_type', 'llm_overall_sentiment', 'llm_forward_sentiment',
+                'llm_surprise_score', 'llm_risk_score', 'llm_uncertainty_score', 'llm_impact_strength',
+                'llm_immediacy', 'llm_impact_horizon', 'llm_confidence', 'llm_novelty_score', 'llm_sentiment_label',
+                'llm_impact_level', 'llm_signal', 'llm_actionable', 'llm_sectors', 'llm_key_facts',
             ]
         
         metadata = {}
@@ -142,10 +148,10 @@ class GenAITextPreparator:
             source_field = next((k for k, v in field_map.items() if v == field), field)
             export_name = field_map.get(source_field, field)
 
-            # Skip llm_financial_metrics as it is duplicated in other headers/fields
+            # Skip only the nested llm_financial_metrics object (flattened fields are included above)
             if source_field == "llm_financial_metrics":
                 continue
-            
+
             if source_field not in row.index:
                 continue
             value = row[source_field]
