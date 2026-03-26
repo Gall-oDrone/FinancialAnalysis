@@ -317,13 +317,13 @@ Resources:
                     max_attempts=3
                     attempt=1
                     while [ $attempt -le $max_attempts ]; do
-                      if curl -fsSL -o "/tmp/terraform_$${TERRAFORM_VERSION}_linux_amd64.zip" "https://releases.hashicorp.com/terraform/$${TERRAFORM_VERSION}/terraform_$${TERRAFORM_VERSION}_linux_amd64.zip"; then
-                        unzip -o -q "/tmp/terraform_$${TERRAFORM_VERSION}_linux_amd64.zip" -d /tmp
+                      if curl -fsSL -o "/tmp/terraform_${!TERRAFORM_VERSION}_linux_amd64.zip" "https://releases.hashicorp.com/terraform/${!TERRAFORM_VERSION}/terraform_${!TERRAFORM_VERSION}_linux_amd64.zip"; then
+                        unzip -o -q "/tmp/terraform_${!TERRAFORM_VERSION}_linux_amd64.zip" -d /tmp
                         mv -f /tmp/terraform /usr/local/bin/terraform
-                        rm -f "/tmp/terraform_$${TERRAFORM_VERSION}_linux_amd64.zip"
+                        rm -f "/tmp/terraform_${!TERRAFORM_VERSION}_linux_amd64.zip"
                         chmod +x /usr/local/bin/terraform
                         if terraform version; then
-                          echo "Terraform $${TERRAFORM_VERSION} installed successfully"
+                          echo "Terraform ${!TERRAFORM_VERSION} installed successfully"
                           break
                         fi
                       fi
@@ -338,13 +338,13 @@ Resources:
                     while [ $attempt -le $max_attempts ]; do
                       KUBECTL_VERSION=$(curl -L -fs https://dl.k8s.io/release/stable.txt)
                       cd /tmp
-                      if curl -fsSL -o kubectl "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl" && \
-                         curl -fsSL -o kubectl.sha256 "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"; then
+                      if curl -fsSL -o kubectl "https://dl.k8s.io/release/${!KUBECTL_VERSION}/bin/linux/amd64/kubectl" && \
+                         curl -fsSL -o kubectl.sha256 "https://dl.k8s.io/release/${!KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"; then
                         if echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check; then
                           install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
                           rm -f kubectl kubectl.sha256
                           if kubectl version --client; then
-                            echo "kubectl $${KUBECTL_VERSION} installed successfully"
+                            echo "kubectl ${!KUBECTL_VERSION} installed successfully"
                             break
                           fi
                         fi
