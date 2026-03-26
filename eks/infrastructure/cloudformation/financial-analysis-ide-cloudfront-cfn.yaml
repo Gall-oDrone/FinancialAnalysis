@@ -114,6 +114,7 @@ Resources:
             Id: !Sub CloudFront-${ParentStackName}
             CustomOriginConfig:
               OriginProtocolPolicy: http-only
+              HTTPPort: 8889
               OriginReadTimeout: 60
               OriginKeepaliveTimeout: 60
           - DomainName: !Ref InstancePublicDnsName

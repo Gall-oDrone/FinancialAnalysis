@@ -179,14 +179,14 @@ Resources:
               instance_id = event["ResourceProperties"]["InstanceId"]
               ssm_document = event["ResourceProperties"]["SsmDocument"]
               log_group = event["ResourceProperties"].get("BootstrapLogGroup")
-              time.sleep(60)
-              args = {"InstanceIds": [instance_id], "DocumentName": ssm_document, "TimeoutSeconds": 1800}
+              time.sleep(45)
+              args = {"InstanceIds": [instance_id], "DocumentName": ssm_document, "TimeoutSeconds": 3600}
               if log_group:
                 args["CloudWatchOutputConfig"] = {"CloudWatchLogGroupName": log_group, "CloudWatchOutputEnabled": True}
               r = ssm.send_command(**args)
               cmd_id = r["Command"]["CommandId"]
               waiter = ssm.get_waiter("command_executed")
-              waiter.wait(CommandId=cmd_id, InstanceId=instance_id, WaiterConfig={"Delay": 10, "MaxAttempts": 90})
+              waiter.wait(CommandId=cmd_id, InstanceId=instance_id, WaiterConfig={"Delay": 10, "MaxAttempts": 80})
               inv = ssm.get_command_invocation(CommandId=cmd_id, InstanceId=instance_id)
               if inv["Status"] != "Success":
                 raise Exception(inv.get("StandardErrorContent", inv["Status"]))
@@ -256,12 +256,12 @@ Resources:
       DocumentFormat: YAML
       Content:
         schemaVersion: "2.2"
-        description: Bootstrap Financial Analysis IDE (code-server, Jupyter, GitHub CLI)
+        description: Bootstrap Financial Analysis IDE (code-server, Jupyter, GitHub CLI, Gall-oDrone/FinancialAnalysis clone, kubectl, Terraform, Cursor)
         mainSteps:
           - action: aws:runShellScript
             name: FinancialAnalysisIdeBootstrap
             inputs:
-              timeoutSeconds: 1800
+              timeoutSeconds: 3600
               runCommand:
                 - !Sub |
                     #!/bin/bash
@@ -270,14 +270,38 @@ Resources:
                     error_exit() { echo "Error at line $1"; exit 1; }
                     trap 'error_exit $LINENO' ERR
 
-                    echo "Installing packages (git, jq, argon2, etc.)..."
+                    echo "Installing packages (git, jq, argon2, unzip, etc.)..."
                     dnf install -y git tar gzip vim nodejs npm make gcc g++ jq unzip zip 2>/dev/null || true
                     dnf install -y argon2 2>/dev/null || yum install -y argon2 2>/dev/null || true
 
-                    echo "Installing GitHub CLI..."
-                    dnf install -y dnf-plugins-core 2>/dev/null || true
-                    dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo 2>/dev/null || true
-                    dnf install -y gh 2>/dev/null || (curl -sL https://github.com/cli/cli/releases/latest/download/gh_*_linux_amd64.tar.gz | tar xz -C /tmp && mv /tmp/gh_*/bin/gh /usr/local/bin/) || true
+                    echo "Installing GitHub CLI (gh)..."
+                    max_attempts=3
+                    attempt=1
+                    while [ $attempt -le $max_attempts ]; do
+                      if dnf install -y dnf-plugins-core 2>/dev/null && \
+                         dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo 2>/dev/null && \
+                         dnf install -y gh 2>/dev/null; then
+                        if gh --version; then
+                          echo "GitHub CLI installed successfully"
+                          break
+                        fi
+                      fi
+                      GH_TAR_URL=$(curl -sL https://api.github.com/repos/cli/cli/releases/latest | jq -r '.assets[] | select(.name | test("linux_amd64.tar.gz$")) | .browser_download_url' | head -1)
+                      if [ -n "$GH_TAR_URL" ] && [ "$GH_TAR_URL" != "null" ] && curl -fsSL "$GH_TAR_URL" -o /tmp/gh.tgz && tar xzf /tmp/gh.tgz -C /tmp; then
+                        for ghdir in /tmp/gh_*; do
+                          if [ -f "$ghdir/bin/gh" ]; then install -m 0755 "$ghdir/bin/gh" /usr/local/bin/gh; break; fi
+                        done
+                        rm -rf /tmp/gh_* /tmp/gh.tgz
+                        if gh --version; then
+                          echo "GitHub CLI installed successfully (tarball)"
+                          break
+                        fi
+                      fi
+                      echo "GitHub CLI installation attempt $attempt failed, retrying..."
+                      sleep 5
+                      attempt=$((attempt + 1))
+                    done
+                    command -v gh >/dev/null || echo "WARNING: gh not on PATH; install manually if needed."
 
                     echo "Installing Docker..."
                     dnf install -y docker 2>/dev/null || yum install -y docker 2>/dev/null || true
@@ -285,23 +309,90 @@ Resources:
                     usermod -aG docker ec2-user
 
                     echo "Installing Docker Compose..."
-                    curl -sL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                    curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
                     chmod +x /usr/local/bin/docker-compose
 
-                    echo "Installing Caddy..."
-                    dnf copr enable -y @caddy/caddy 2>/dev/null || true
-                    dnf install -y caddy 2>/dev/null || true
-                    systemctl enable --now caddy
+                    echo "Installing Terraform..."
+                    TERRAFORM_VERSION="1.9.8"
+                    max_attempts=3
+                    attempt=1
+                    while [ $attempt -le $max_attempts ]; do
+                      if curl -fsSL -o "/tmp/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"; then
+                        unzip -o -q "/tmp/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -d /tmp
+                        mv -f /tmp/terraform /usr/local/bin/terraform
+                        rm -f "/tmp/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+                        chmod +x /usr/local/bin/terraform
+                        if terraform version; then
+                          echo "Terraform ${TERRAFORM_VERSION} installed successfully"
+                          break
+                        fi
+                      fi
+                      echo "Terraform installation attempt $attempt failed, retrying..."
+                      sleep 5
+                      attempt=$((attempt + 1))
+                    done
 
-                    echo "Configuring Caddy (code-server on 8889)..."
-                    echo 'http://:80 { reverse_proxy 127.0.0.1:8889 }' > /etc/caddy/Caddyfile
-                    systemctl restart caddy
+                    echo "Installing kubectl..."
+                    max_attempts=3
+                    attempt=1
+                    while [ $attempt -le $max_attempts ]; do
+                      KUBECTL_VERSION=$(curl -L -fs https://dl.k8s.io/release/stable.txt)
+                      cd /tmp
+                      if curl -fsSL -o kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" && \
+                         curl -fsSL -o kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"; then
+                        if echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check; then
+                          install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+                          rm -f kubectl kubectl.sha256
+                          if kubectl version --client; then
+                            echo "kubectl ${KUBECTL_VERSION} installed successfully"
+                            break
+                          fi
+                        fi
+                      fi
+                      echo "kubectl installation attempt $attempt failed, retrying..."
+                      rm -f kubectl kubectl.sha256
+                      sleep 5
+                      attempt=$((attempt + 1))
+                    done
 
-                    echo "Setting up ec2-user environment (code-server, Jupyter, GitHub CLI)..."
+                    echo "Skipping Caddy; exposing code-server directly on 8889..."
+
+                    echo "Setting up ec2-user environment (code-server, Jupyter, GitHub CLI, Cursor)..."
                     runuser -l ec2-user -c '
                     set -e
                     mkdir -p ~/environment
+                    echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> ~/.bashrc
                     export PATH="$HOME/.local/bin:$PATH"
+
+                    echo "Installing Cursor CLI (cursor / cursor-agent)..."
+                    max_attempts=3
+                    attempt=1
+                    cursor_installed=0
+                    while [ $attempt -le $max_attempts ]; do
+                      if curl -fsSL https://cursor.sh/install | sh; then
+                        hash -r
+                        if command -v cursor &>/dev/null || command -v cursor-agent &>/dev/null || \
+                           [ -f "$HOME/.local/bin/cursor" ] || [ -f "$HOME/.local/bin/cursor-agent" ]; then
+                          echo "Cursor CLI installed successfully"
+                          cursor_installed=1
+                          break
+                        fi
+                      fi
+                      echo "Cursor CLI installation attempt $attempt failed, retrying..."
+                      sleep 5
+                      attempt=$((attempt + 1))
+                    done
+                    if [ $cursor_installed -ne 1 ]; then
+                      echo "WARNING: Cursor CLI installation did not complete; you can install later from https://cursor.sh"
+                    fi
+
+                    echo "Cloning FinancialAnalysis repository (https://github.com/Gall-oDrone/FinancialAnalysis)..."
+                    cd ~/environment
+                    if [ ! -d "FinancialAnalysis" ]; then
+                      git clone https://github.com/Gall-oDrone/FinancialAnalysis.git || echo "WARNING: git clone FinancialAnalysis failed (check network or repo visibility)"
+                    else
+                      echo "FinancialAnalysis directory already exists; skipping clone."
+                    fi
 
                     if ! command -v code-server &>/dev/null; then
                       echo "Installing code-server..."
@@ -316,7 +407,7 @@ Resources:
                       IDE_PW=$(echo "$PASSWORD_SECRET" | jq -r .password)
                       HASHED=$(echo -n "$IDE_PW" | argon2 saltItWithSalt -l 32 -e 2>/dev/null || echo "$IDE_PW")
                       mkdir -p ~/.config/code-server
-                      echo "bind-addr: 127.0.0.1:8889
+                      echo "bind-addr: 0.0.0.0:8889
                     auth: password
                     hashed-password: \"$HASHED\"
                     cert: false" > ~/.config/code-server/config.yaml
