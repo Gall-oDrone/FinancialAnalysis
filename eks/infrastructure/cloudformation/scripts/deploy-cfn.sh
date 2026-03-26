@@ -156,12 +156,14 @@ deploy_iam_stack() {
 deploy_main_stack() {
   log_info "Deploying main IDE stack: $STACK_NAME"
   local template_url=$(upload_template_to_s3 "$TEMPLATE_FILE" "$STACK_NAME")
+  local recreate_needed=0
   if stack_exists "$STACK_NAME"; then
     local status=$(get_stack_status "$STACK_NAME")
     if [ "$status" = "ROLLBACK_COMPLETE" ] || [ "$status" = "UPDATE_ROLLBACK_COMPLETE" ]; then
       log_warning "Main stack is $status; deleting and recreating..."
       aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$AWS_REGION" >/dev/null
       wait_for_stack_deletion "$STACK_NAME"
+      recreate_needed=1
     else
       local update_out
       if update_out=$(aws cloudformation update-stack --stack-name "$STACK_NAME" --template-url "$template_url" \
@@ -198,19 +200,21 @@ deploy_main_stack() {
         "ParameterKey=InstanceProfileName,ParameterValue=$INSTANCE_PROFILE_NAME" \
       --region "$AWS_REGION" --query 'StackId' --output text
     wait_for_stack "CREATE" "$STACK_NAME"
+    return 0
   fi
 
-  # If we reach here, we deleted a rollback-complete stack and must recreate.
-  aws cloudformation create-stack --stack-name "$STACK_NAME" --template-url "$template_url" \
-    --capabilities CAPABILITY_NAMED_IAM \
-    --parameters \
-      "ParameterKey=RepositoryOwner,ParameterValue=$REPOSITORY_OWNER" \
-      "ParameterKey=RepositoryName,ParameterValue=$REPOSITORY_NAME" \
-      "ParameterKey=RepositoryRef,ParameterValue=$REPOSITORY_REF" \
-      "ParameterKey=InstanceVolumeSize,ParameterValue=$INSTANCE_VOLUME_SIZE" \
-      "ParameterKey=InstanceProfileName,ParameterValue=$INSTANCE_PROFILE_NAME" \
-    --region "$AWS_REGION" --query 'StackId' --output text
-  wait_for_stack "CREATE" "$STACK_NAME"
+  if [ "$recreate_needed" = "1" ]; then
+    aws cloudformation create-stack --stack-name "$STACK_NAME" --template-url "$template_url" \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --parameters \
+        "ParameterKey=RepositoryOwner,ParameterValue=$REPOSITORY_OWNER" \
+        "ParameterKey=RepositoryName,ParameterValue=$REPOSITORY_NAME" \
+        "ParameterKey=RepositoryRef,ParameterValue=$REPOSITORY_REF" \
+        "ParameterKey=InstanceVolumeSize,ParameterValue=$INSTANCE_VOLUME_SIZE" \
+        "ParameterKey=InstanceProfileName,ParameterValue=$INSTANCE_PROFILE_NAME" \
+      --region "$AWS_REGION" --query 'StackId' --output text
+    wait_for_stack "CREATE" "$STACK_NAME"
+  fi
 }
 
 deploy_cloudfront_stack() {
@@ -219,12 +223,14 @@ deploy_cloudfront_stack() {
   [ -n "$instance_dns" ] && [ "$instance_dns" != "None" ] || { log_error "InstancePublicDnsName not found."; exit 1; }
   log_info "Deploying CloudFront stack: $CLOUDFRONT_STACK_NAME (origin: $instance_dns)"
   local template_url=$(upload_template_to_s3 "$CLOUDFRONT_TEMPLATE_FILE" "$CLOUDFRONT_STACK_NAME")
+  local recreate_needed=0
   if stack_exists "$CLOUDFRONT_STACK_NAME"; then
     local status=$(get_stack_status "$CLOUDFRONT_STACK_NAME")
     if [ "$status" = "ROLLBACK_COMPLETE" ] || [ "$status" = "UPDATE_ROLLBACK_COMPLETE" ]; then
       log_warning "CloudFront stack is $status; deleting and recreating..."
       aws cloudformation delete-stack --stack-name "$CLOUDFRONT_STACK_NAME" --region "$AWS_REGION" >/dev/null
       wait_for_stack_deletion "$CLOUDFRONT_STACK_NAME"
+      recreate_needed=1
     else
       local update_out
       if update_out=$(aws cloudformation update-stack --stack-name "$CLOUDFRONT_STACK_NAME" --template-url "$template_url" \
@@ -274,34 +280,36 @@ deploy_cloudfront_stack() {
           ;;
       esac
     fi
+    return 0
   fi
 
-  # If we reach here, we deleted a rollback-complete stack and must recreate.
-  local recreate_out
-  if recreate_out=$(aws cloudformation create-stack --stack-name "$CLOUDFRONT_STACK_NAME" --template-url "$template_url" \
-    --parameters \
-      "ParameterKey=ParentStackName,ParameterValue=$STACK_NAME" \
-      "ParameterKey=InstancePublicDnsName,ParameterValue=$instance_dns" \
-      "ParameterKey=PriceClass,ParameterValue=$CLOUDFRONT_PRICE_CLASS" \
-    --region "$AWS_REGION" --query 'StackId' --output text 2>&1); then
-    wait_for_stack "CREATE" "$CLOUDFRONT_STACK_NAME"
-  else
-    case "$recreate_out" in
-      *"AlreadyExistsException"*)
-        log_warning "CloudFront stack already exists (post-delete); updating instead."
-        aws cloudformation update-stack --stack-name "$CLOUDFRONT_STACK_NAME" --template-url "$template_url" \
-          --parameters \
-            "ParameterKey=ParentStackName,ParameterValue=$STACK_NAME" \
-            "ParameterKey=InstancePublicDnsName,ParameterValue=$instance_dns" \
-            "ParameterKey=PriceClass,ParameterValue=$CLOUDFRONT_PRICE_CLASS" \
-          --region "$AWS_REGION"
-        wait_for_stack "UPDATE" "$CLOUDFRONT_STACK_NAME"
-        ;;
-      *)
-        log_error "CloudFront recreate failed: $recreate_out"
-        exit 1
-        ;;
-    esac
+  if [ "$recreate_needed" = "1" ]; then
+    local recreate_out
+    if recreate_out=$(aws cloudformation create-stack --stack-name "$CLOUDFRONT_STACK_NAME" --template-url "$template_url" \
+      --parameters \
+        "ParameterKey=ParentStackName,ParameterValue=$STACK_NAME" \
+        "ParameterKey=InstancePublicDnsName,ParameterValue=$instance_dns" \
+        "ParameterKey=PriceClass,ParameterValue=$CLOUDFRONT_PRICE_CLASS" \
+      --region "$AWS_REGION" --query 'StackId' --output text 2>&1); then
+      wait_for_stack "CREATE" "$CLOUDFRONT_STACK_NAME"
+    else
+      case "$recreate_out" in
+        *"AlreadyExistsException"*)
+          log_warning "CloudFront stack already exists (post-delete); updating instead."
+          aws cloudformation update-stack --stack-name "$CLOUDFRONT_STACK_NAME" --template-url "$template_url" \
+            --parameters \
+              "ParameterKey=ParentStackName,ParameterValue=$STACK_NAME" \
+              "ParameterKey=InstancePublicDnsName,ParameterValue=$instance_dns" \
+              "ParameterKey=PriceClass,ParameterValue=$CLOUDFRONT_PRICE_CLASS" \
+            --region "$AWS_REGION"
+          wait_for_stack "UPDATE" "$CLOUDFRONT_STACK_NAME"
+          ;;
+        *)
+          log_error "CloudFront recreate failed: $recreate_out"
+          exit 1
+          ;;
+      esac
+    fi
   fi
 }
 
