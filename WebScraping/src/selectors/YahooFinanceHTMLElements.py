@@ -5,7 +5,7 @@ UL_STREAM_ITEMS_yf_1drgw5l = "/html/body/div[2]/main/section/section/section/sec
 UL_STREAM_ITEMS_yf_9xydx9 = "/html/body/div[2]/div[3]/main/section/section/section/section/section/div/div[1]/div/div/ul"
 UL_STREAM_ITEMS_yf_1qcp8cc = "/html/body/div[1]/div[4]/main/section/section/section/section/section/div/div/div/div/ul"
 UL_STREAM_ITEMS_yf_ydpc1 = "/html/body/div[2]/div[3]/main/section/section/section/section/section/div/div/div[1]/div/ul"
-
+A_PRIMARY_LINK_FIN_SIZE_SMALL_yf_1119g04z = "/html/body/div[1]/div[4]/main/section/section/section/section/section/div/div/div[2]/nav/div[2]/a"
 # Robust: find ul by class "stream-items" (e.g. "stream-items yf-ydpc1") so it works when
 # the news list is loaded by JS and absolute XPaths change.
 UL_STREAM_ITEMS_BY_CLASS = "//ul[contains(@class, 'stream-items')]"
