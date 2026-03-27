@@ -5,13 +5,13 @@
 module "vpc" {
   source = "../../modules/vpc"
 
-  project_name                = var.project_name
-  environment                 = var.environment
-  vpc_cidr                    = var.vpc_cidr
-  enable_nat_gateway          = true
-  single_nat_gateway          = false # Multi-AZ NAT for production
-  enable_flow_logs             = true
-  flow_logs_retention_days     = 90
+  project_name             = var.project_name
+  environment              = var.environment
+  vpc_cidr                 = var.vpc_cidr
+  enable_nat_gateway       = true
+  single_nat_gateway       = false # Multi-AZ NAT for production
+  enable_flow_logs         = true
+  flow_logs_retention_days = 90
 
   tags = var.tags
 }
@@ -19,12 +19,12 @@ module "vpc" {
 module "eks" {
   source = "../../modules/eks"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  vpc_id                = module.vpc.vpc_id
-  vpc_cidr              = module.vpc.vpc_cidr
-  public_subnet_ids     = module.vpc.public_subnet_ids
-  private_subnet_ids    = module.vpc.private_subnet_ids
+  project_name       = var.project_name
+  environment        = var.environment
+  vpc_id             = module.vpc.vpc_id
+  vpc_cidr           = module.vpc.vpc_cidr
+  public_subnet_ids  = module.vpc.public_subnet_ids
+  private_subnet_ids = module.vpc.private_subnet_ids
 
   kubernetes_version    = var.kubernetes_version
   node_instance_types   = ["m5.large", "m5.xlarge"]
@@ -32,12 +32,24 @@ module "eks" {
   node_min_size         = 3
   node_max_size         = 10
   node_disk_size        = 100
-  use_spot_instances     = false # On-demand for production
+  use_spot_instances    = false # On-demand for production
 
   enable_public_access  = false # Private API endpoint for production
   enable_private_access = true
 
   tags = var.tags
+}
+
+module "iam_irsa" {
+  source = "../../modules/iam"
+
+  cluster_name      = module.eks.cluster_name
+  oidc_provider     = module.eks.oidc_provider_url
+  oidc_provider_arn = module.eks.oidc_provider_arn
+
+  irsa_policies = {
+    alb = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
+  }
 }
 
 module "rds" {
@@ -55,7 +67,7 @@ module "rds" {
   db_name                     = var.db_name
   db_username                 = var.db_username
   multi_az                    = true # Multi-AZ for production
-  backup_retention_period      = 30
+  backup_retention_period     = 30
   enable_performance_insights = true
   deletion_protection         = true # Prevent accidental deletion
 

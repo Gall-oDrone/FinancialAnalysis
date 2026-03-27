@@ -5,13 +5,13 @@
 module "vpc" {
   source = "../../modules/vpc"
 
-  project_name                = var.project_name
-  environment                 = var.environment
-  vpc_cidr                    = var.vpc_cidr
-  enable_nat_gateway          = true
-  single_nat_gateway          = true
-  enable_flow_logs            = true
-  flow_logs_retention_days     = 30
+  project_name             = var.project_name
+  environment              = var.environment
+  vpc_cidr                 = var.vpc_cidr
+  enable_nat_gateway       = true
+  single_nat_gateway       = true
+  enable_flow_logs         = true
+  flow_logs_retention_days = 30
 
   tags = var.tags
 }
@@ -19,12 +19,12 @@ module "vpc" {
 module "eks" {
   source = "../../modules/eks"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  vpc_id                = module.vpc.vpc_id
-  vpc_cidr              = module.vpc.vpc_cidr
-  public_subnet_ids     = module.vpc.public_subnet_ids
-  private_subnet_ids    = module.vpc.private_subnet_ids
+  project_name       = var.project_name
+  environment        = var.environment
+  vpc_id             = module.vpc.vpc_id
+  vpc_cidr           = module.vpc.vpc_cidr
+  public_subnet_ids  = module.vpc.public_subnet_ids
+  private_subnet_ids = module.vpc.private_subnet_ids
 
   kubernetes_version    = var.kubernetes_version
   node_instance_types   = ["t3.large"]
@@ -38,6 +38,18 @@ module "eks" {
   enable_private_access = true
 
   tags = var.tags
+}
+
+module "iam_irsa" {
+  source = "../../modules/iam"
+
+  cluster_name      = module.eks.cluster_name
+  oidc_provider     = module.eks.oidc_provider_url
+  oidc_provider_arn = module.eks.oidc_provider_arn
+
+  irsa_policies = {
+    alb = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
+  }
 }
 
 module "rds" {

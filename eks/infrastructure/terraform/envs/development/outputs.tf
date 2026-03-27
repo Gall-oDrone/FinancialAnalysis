@@ -39,6 +39,16 @@ output "ecr_repository_url" {
   value       = module.eks.ecr_repository_url
 }
 
+output "alb_controller_irsa_role_arn" {
+  description = "IRSA role ARN for AWS Load Balancer Controller (helm: serviceAccount.annotations eks.amazonaws.com/role-arn)"
+  value       = module.iam_irsa.irsa_role_arns["alb"]
+}
+
+output "irsa_role_arns" {
+  description = "Map of IRSA role keys to ARNs from modules/iam"
+  value       = module.iam_irsa.irsa_role_arns
+}
+
 # RDS Outputs
 output "rds_endpoint" {
   description = "RDS endpoint"
