@@ -1,0 +1,132 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: financial-news-scraper
+  namespace: financial-analysis
+  labels:
+    app.kubernetes.io/name: financial-analysis
+    app.kubernetes.io/component: news-scraper
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600  # 1 hour timeout
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: financial-analysis
+            app.kubernetes.io/component: news-scraper
+        spec:
+          serviceAccountName: financial-analysis-sa
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: news-scraper
+              image: ${ECR_REPOSITORY_URL}:latest
+              imagePullPolicy: Always
+              command: ["python", "-m", "WebScraping.src.news_collector_refactored_example"]
+              resources:
+                requests:
+                  memory: "1Gi"
+                  cpu: "500m"
+                limits:
+                  memory: "4Gi"
+                  cpu: "2000m"
+              envFrom:
+                - configMapRef:
+                    name: financial-analysis-config
+                - secretRef:
+                    name: db-credentials
+              volumeMounts:
+                - name: logs
+                  mountPath: /app/logs
+                - name: data
+                  mountPath: /app/data
+                - name: shm
+                  mountPath: /dev/shm
+          volumes:
+            - name: logs
+              emptyDir: {}
+            - name: data
+              emptyDir: {}
+            - name: shm
+              emptyDir:
+                medium: Memory
+                sizeLimit: "2Gi"
+          nodeSelector:
+            kubernetes.io/os: linux
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: financial-stock-scraper
+  namespace: financial-analysis
+  labels:
+    app.kubernetes.io/name: financial-analysis
+    app.kubernetes.io/component: stock-scraper
+spec:
+  schedule: "0 */4 * * *"  # Every 4 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800  # 30 minutes timeout
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: financial-analysis
+            app.kubernetes.io/component: stock-scraper
+        spec:
+          serviceAccountName: financial-analysis-sa
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: stock-scraper
+              image: ${ECR_REPOSITORY_URL}:latest
+              imagePullPolicy: Always
+              command: ["python", "-m", "WebScraping.src.WebScraper"]
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "1000m"
+              envFrom:
+                - configMapRef:
+                    name: financial-analysis-config
+                - secretRef:
+                    name: db-credentials
+              volumeMounts:
+                - name: logs
+                  mountPath: /app/logs
+                - name: data
+                  mountPath: /app/data
+                - name: shm
+                  mountPath: /dev/shm
+          volumes:
+            - name: logs
+              emptyDir: {}
+            - name: data
+              emptyDir: {}
+            - name: shm
+              emptyDir:
+                medium: Memory
+                sizeLimit: "2Gi"
+          nodeSelector:
+            kubernetes.io/os: linux
+

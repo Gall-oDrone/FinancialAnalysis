@@ -1,0 +1,657 @@
+"""
+Agentic text enrichment for ETL transform stage.
+
+Uses an LLM client (OpenAI, Claude, etc.) to add fields to transformed articles:
+- Short summary (one-line)
+- Extracted entities or themes
+- Optional custom tasks via prompt templates
+
+Composes with the existing TextTransformationPipeline: run after it or as a
+separate pipeline stage. OOP: depends on LLMClient interface only.
+"""
+
+from abc import ABC, abstractmethod
+import ast
+import json
+import re
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
+
+import pandas as pd
+
+from agents.base import LLMClient, LLMMessage
+from core.logging import get_logger
+
+logger = get_logger(__name__)
+
+# Allowed values for structured financial extraction (for validation)
+FINANCIAL_EVENT_TYPES = [
+    "earnings", "guidance", "m&a", "analyst_action", "macro", "litigation",
+    "regulation", "product", "management_change", "other",
+]
+IMPACT_HORIZONS = ["intraday", "short_term", "medium_term", "long_term"]
+SENTIMENT_LABELS = ["positive", "negative", "neutral"]
+IMPACT_LEVELS = ["high", "medium", "low"]
+SIGNALS = ["bullish", "neutral", "bearish"]
+SECTORS = ["DeFi", "regulation", "macro", "equities", "crypto", "commodities", "fx", "rates", "other"]
+
+
+# ============================================================================
+# Enrichment result and task interface
+# ============================================================================
+
+
+@dataclass
+class EnrichmentResult:
+    """Result of LLM-based enrichment for one article."""
+    llm_summary: Optional[str] = None
+    llm_entities: Optional[List[str]] = None
+    llm_themes: Optional[List[str]] = None
+    raw_response: Optional[str] = None
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "llm_summary": self.llm_summary,
+            "llm_entities": self.llm_entities or [],
+            "llm_themes": self.llm_themes or [],
+            "llm_error": self.error,
+        }
+
+
+class EnrichmentTask(ABC):
+    """Abstract task: build prompt from row, parse LLM response into structured result."""
+
+    @abstractmethod
+    def build_prompt(self, row: pd.Series) -> str:
+        """Build the user prompt from a dataframe row."""
+        pass
+
+    @abstractmethod
+    def parse_response(self, content: str) -> Dict[str, Any]:
+        """Parse LLM response into dict to merge into row."""
+        pass
+
+    @property
+    @abstractmethod
+    def system_prompt(self) -> str:
+        """Optional system prompt."""
+        pass
+
+
+# ============================================================================
+# Default tasks
+# ============================================================================
+
+
+class SummaryAndThemesTask(EnrichmentTask):
+    """Default: one-line summary and comma-separated themes."""
+
+    @property
+    def system_prompt(self) -> str:
+        return (
+            "You are a financial news analyst. Respond only with the requested structured output. "
+            "Be concise and factual."
+        )
+
+    def build_prompt(self, row: pd.Series) -> str:
+        title = row.get("headline") or ""
+        body = row.get("content") or row.get("summary") or ""
+        text = (title + "\n" + body).strip()[:4000]
+        return (
+            "For this financial news text, provide:\n"
+            "1. SUMMARY: one short sentence summarizing the main point.\n"
+            "2. THEMES: comma-separated list of 3-5 themes (e.g. earnings, regulation, crypto).\n\n"
+            f"Text:\n{text}"
+        )
+
+    def parse_response(self, content: str) -> Dict[str, Any]:
+        summary = None
+        themes: List[str] = []
+        for line in content.strip().split("\n"):
+            line = line.strip()
+            if line.upper().startswith("SUMMARY:") or line.upper().startswith("1."):
+                summary = line.split(":", 1)[-1].strip().lstrip("12.").strip()
+            elif line.upper().startswith("THEMES:") or line.upper().startswith("2."):
+                raw = line.split(":", 1)[-1].strip().lstrip("12.").strip()
+                themes = [t.strip() for t in raw.split(",") if t.strip()]
+        if not summary and content:
+            summary = content.strip()[:500]
+        return {
+            "llm_summary": summary,
+            "llm_themes": themes,
+        }
+
+
+# ============================================================================
+# Financial metrics task (trading-grade extraction)
+# ============================================================================
+
+
+class FinancialMetricsTask(EnrichmentTask):
+    """
+    Production-grade financial feature extraction for trading/ML.
+
+    Extracts: numeric scores (overall_sentiment, forward_sentiment, surprise_score,
+    risk_score, uncertainty_score, impact_strength, immediacy, confidence, novelty_score),
+    event_type, impact_horizon, sentiment_label, impact_level, signal, actionable,
+    sectors, entities (→ llm_entities), key_facts.
+    All numeric scores in [-1, 1], confidence in [0, 1]. Returns strict JSON only.
+    """
+
+    MAX_TEXT_LENGTH = 6000
+
+    @property
+    def system_prompt(self) -> str:
+        return (
+            "You are a financial information extraction engine. "
+            "Your task is to analyze financial news articles and extract structured quantitative trading features.\n\n"
+            "Follow these rules strictly:\n"
+            "- Return only valid JSON.\n"
+            "- No explanations.\n"
+            "- No commentary.\n"
+            "- All numeric scores must be between -1.0 and 1.0.\n"
+            "- Confidence values must be between 0.0 and 1.0.\n"
+            "- If a field is not applicable, use null.\n"
+            "- Be consistent and deterministic.\n\n"
+            "Scoring definitions:\n"
+            "- overall_sentiment: overall tone of the article (raw tone, comparable to FinBERT).\n"
+            "- forward_sentiment: tone regarding future expectations (forward guidance).\n"
+            "- surprise_score: degree of unexpectedness vs expectations (positive=beat, negative=miss).\n"
+            "- risk_score: perceived increase in company risk (bankruptcy, litigation, downgrade, liquidity).\n"
+            "- uncertainty_score: ambiguity or lack of clarity (high => expect volatility).\n"
+            "- impact_strength: expected magnitude of market reaction.\n"
+            "- immediacy: expected speed of price reaction (1.0=instant, 0.2=slow thematic).\n"
+            "- confidence: your self-assessed clarity of the signal (0–1).\n"
+            "- novelty_score: how novel or incremental the news is vs prior coverage (1.0=breaking/new, -1.0=rehash).\n\n"
+            "Categorical fields (use only allowed values):\n"
+            "- sentiment_label: overall tone classification.\n"
+            "- impact_level: expected market impact magnitude (high/medium/low).\n"
+            "- signal: trading signal (bullish/neutral/bearish).\n"
+            "- actionable: true if the news is likely to drive immediate trading decisions, else false.\n"
+            "- sectors: list of applicable sectors/themes from the allowed set.\n"
+            "- entities: list of named entities (companies, people, products, currencies) mentioned.\n"
+            "- key_facts: list of 1–5 short factual claims or key points (strings).\n\n"
+            f"Event types allowed: {json.dumps(FINANCIAL_EVENT_TYPES)}\n"
+            f"Impact horizon allowed: {json.dumps(IMPACT_HORIZONS)}\n"
+            f"Sentiment labels allowed: {json.dumps(SENTIMENT_LABELS)}\n"
+            f"Impact levels allowed: {json.dumps(IMPACT_LEVELS)}\n"
+            f"Signals allowed: {json.dumps(SIGNALS)}\n"
+            f"Sectors allowed: {json.dumps(SECTORS)}"
+        )
+
+    def build_prompt(self, row: pd.Series) -> str:
+        headline = (row.get("headline") or "").strip()
+        body = (row.get("content") or row.get("summary") or "").strip()
+        full_text = (headline + "\n\n" + body).strip()[: self.MAX_TEXT_LENGTH]
+        tickers = row.get("tickers")
+        if isinstance(tickers, list) and tickers:
+            ticker = str(tickers[0]) if tickers else ""
+        elif isinstance(tickers, str):
+            ticker = tickers
+        else:
+            ticker = ""
+        return (
+            "Analyze the following financial news article.\n\n"
+            "[TITLE]\n"
+            f"{headline or '(no title)'}\n\n"
+            "[CONTENT]\n"
+            f"{full_text or '(no content)'}\n\n"
+            "Return JSON in this exact format (no other text):\n"
+            "{\n"
+            f'"ticker": "{ticker}",\n'
+            '"event_type": "",\n'
+            '"overall_sentiment": 0.0,\n'
+            '"forward_sentiment": 0.0,\n'
+            '"surprise_score": 0.0,\n'
+            '"risk_score": 0.0,\n'
+            '"uncertainty_score": 0.0,\n'
+            '"impact_strength": 0.0,\n'
+            '"immediacy": 0.0,\n'
+            '"impact_horizon": "",\n'
+            '"confidence": 0.0,\n'
+            '"novelty_score": 0.0,\n'
+            '"sentiment_label": "",\n'
+            '"impact_level": "",\n'
+            '"signal": "",\n'
+            '"actionable": false,\n'
+            '"sectors": [],\n'
+            '"entities": [],\n'
+            '"key_facts": []\n'
+            "}"
+        )
+
+    def _fix_trailing_commas(self, raw: str) -> str:
+        """Remove trailing commas before } or ] so strict JSON parser accepts."""
+        # Remove comma before } or ]
+        s = re.sub(r",(\s*})", r"\1", raw)
+        s = re.sub(r",(\s*])", r"\1", s)
+        return s
+
+    def _normalize_newlines_in_json_string(self, raw: str) -> str:
+        """Replace literal newline/carriage return with space so broken LLM JSON may parse."""
+        return raw.replace("\n", " ").replace("\r", " ")
+
+    def _strip_control_chars(self, raw: str) -> str:
+        """Remove or replace control characters that break JSON (e.g. \\x00, \\x1b)."""
+        return "".join(
+            c if (ord(c) >= 32 or c in "\n\r\t") else " "
+            for c in raw
+        )
+
+    def _repair_truncated_json(self, raw: str) -> str:
+        """If JSON looks truncated (unclosed braces/brackets), try closing it."""
+        if not raw or not raw.strip():
+            return raw
+        s = raw.strip()
+        open_braces = s.count("{") - s.count("}")
+        open_brackets = s.count("[") - s.count("]")
+        # If we're inside a string at the end, don't append blindly
+        if open_braces > 0 or open_brackets > 0:
+            # Close in reverse order: last unclosed [ then {
+            suffix = "]" * open_brackets + "}" * open_braces
+            s = s.rstrip()
+            if s.endswith(","):
+                s = s[:-1]
+            s = s + suffix
+        return s
+
+    def _repair_key_facts_unquoted_strings(self, raw: str) -> str:
+        """Fix key_facts array entries where the LLM omitted the opening quote (e.g. 'Expectations...' instead of '\"Expectations...')."""
+        if not raw or '"key_facts"' not in raw:
+            return raw
+        # After comma or [, we sometimes get newline then unquoted sentence ending with ."
+        # Pattern: (,\s*\\n)\s*([A-Z][^"\\n]+?\\.)\s*"  -> wrap in quotes: \1 "\2"
+        # We need to add the opening quote; the " after the period stays as closing quote.
+        pattern = re.compile(
+            r'(,\s*\n)\s*([A-Z][^"\n]+?\.)\s*"',
+            re.MULTILINE,
+        )
+        return pattern.sub(r'\1 "\2"', raw)
+
+    def _try_parse_candidates(self, *candidates: str) -> Optional[Dict[str, Any]]:
+        """Try json.loads, trailing-comma fix, newline normalize, control-char strip, truncation repair, key_facts quote repair, and literal_eval."""
+        for raw in candidates:
+            if not raw or not raw.strip():
+                continue
+            # Build variants: original, strip control chars, key_facts repair (LLM often omits opening quote), etc.
+            variants = [
+                raw,
+                self._strip_control_chars(raw),
+                self._repair_key_facts_unquoted_strings(raw),
+                self._repair_key_facts_unquoted_strings(self._strip_control_chars(raw)),
+                self._normalize_newlines_in_json_string(raw),
+                self._normalize_newlines_in_json_string(self._strip_control_chars(raw)),
+                self._repair_truncated_json(raw),
+                self._repair_truncated_json(self._strip_control_chars(raw)),
+            ]
+            for value in variants:
+                if not value or not value.strip():
+                    continue
+                for v in (value, self._fix_trailing_commas(value)):
+                    try:
+                        return json.loads(v)
+                    except json.JSONDecodeError:
+                        pass
+            for value in (raw, self._fix_trailing_commas(raw)):
+                try:
+                    parsed = ast.literal_eval(value)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except (ValueError, SyntaxError):
+                    pass
+        return None
+
+    def _extract_json(self, content: str) -> Optional[Dict[str, Any]]:
+        """Extract JSON from response, tolerating markdown, trailing commas, and extra text."""
+        text = (content or "").strip()
+        if not text:
+            return None
+        # Try markdown code fence block and full text
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+        if match:
+            block = match.group(1).strip()
+            result = self._try_parse_candidates(block, text)
+            if result is not None:
+                return result
+        result = self._try_parse_candidates(text)
+        if result is not None:
+            return result
+        # Sanitize and retry (control chars / truncated) on full text
+        sanitized = self._strip_control_chars(text)
+        if sanitized != text:
+            result = self._try_parse_candidates(sanitized)
+            if result is not None:
+                return result
+        repaired = self._repair_truncated_json(sanitized if sanitized else text)
+        if repaired != text:
+            result = self._try_parse_candidates(repaired)
+            if result is not None:
+                return result
+        # Find first { and matching }, skipping braces inside quoted strings
+        work = sanitized if sanitized else text
+        brace = work.find("{")
+        if brace == -1:
+            return None
+        depth = 0
+        i = brace
+        in_string = False
+        escape = False
+        quote_char = None
+        end = brace
+        while i < len(work):
+            c = work[i]
+            if escape:
+                escape = False
+                i += 1
+                continue
+            if c == "\\" and in_string:
+                escape = True
+                i += 1
+                continue
+            if in_string:
+                if c == quote_char:
+                    in_string = False
+                i += 1
+                continue
+            if c in ('"', "'"):
+                in_string = True
+                quote_char = c
+                i += 1
+                continue
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+            i += 1
+        if depth != 0:
+            end = len(work) - 1
+        raw = work[brace : end + 1]
+        if depth != 0:
+            raw = raw + "}" * depth
+        result = self._try_parse_candidates(raw)
+        if result is not None:
+            return result
+        # Try from first { to last } (handles trailing prose or wrong brace match)
+        last_brace = work.rfind("}")
+        if last_brace != -1 and last_brace > brace:
+            raw_tail = work[brace : last_brace + 1]
+            result = self._try_parse_candidates(raw_tail)
+            if result is not None:
+                return result
+        return None
+
+    def _clamp_score(self, v: Any) -> Optional[float]:
+        """Clamp numeric score to [-1, 1] or return None."""
+        if v is None:
+            return None
+        try:
+            x = float(v)
+            if x != x:  # NaN
+                return None
+            return max(-1.0, min(1.0, x))
+        except (TypeError, ValueError):
+            return None
+
+    def _clamp_confidence(self, v: Any) -> Optional[float]:
+        """Clamp confidence to [0, 1] or return None."""
+        if v is None:
+            return None
+        try:
+            x = float(v)
+            if x != x:
+                return None
+            return max(0.0, min(1.0, x))
+        except (TypeError, ValueError):
+            return None
+
+    def _normalize_str_list(self, v: Any, allowed: List[str]) -> List[str]:
+        """Return list of strings that are in allowed; invalid entries dropped."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = [v]
+        if not isinstance(v, list):
+            return []
+        out = []
+        for item in v:
+            s = str(item).strip() if item is not None else ""
+            if s and (not allowed or s in allowed):
+                out.append(s)
+        return out
+
+    def _normalize_entities(self, v: Any) -> List[str]:
+        """Return list of entity strings (no allowed set)."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if x is not None and str(x).strip()]
+        return []
+
+    def _normalize_key_facts(self, v: Any) -> List[str]:
+        """Return list of non-empty strings (key facts)."""
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v.strip()] if v.strip() else []
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if x is not None and str(x).strip()][:10]
+        return []
+
+    def parse_response(self, content: str) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        obj = self._extract_json(content)
+        if not obj:
+            # Log raw response tail for debugging (avoid huge logs)
+            sample = (content or "").strip()[-800:] if content else ""
+            logger.warning(
+                "FinancialMetricsTask: failed to parse JSON from response (length=%s). Tail: %s",
+                len(content or ""),
+                sample if len(sample) < 800 else sample[:400] + " ... " + sample[-400:],
+            )
+            return {
+                "llm_financial_metrics": None,
+                "llm_entities": [],
+                "llm_error": "Failed to parse JSON from response",
+                "llm_ticker": None, "llm_event_type": None, "llm_overall_sentiment": None,
+                "llm_forward_sentiment": None, "llm_surprise_score": None, "llm_risk_score": None,
+                "llm_uncertainty_score": None, "llm_impact_strength": None, "llm_immediacy": None,
+                "llm_impact_horizon": None, "llm_confidence": None, "llm_novelty_score": None,
+                "llm_sentiment_label": None,
+                "llm_impact_level": None, "llm_signal": None, "llm_actionable": None,
+                "llm_sectors": [], "llm_key_facts": [],
+            }
+        # Validate categorical fields
+        event_type = obj.get("event_type")
+        if event_type not in FINANCIAL_EVENT_TYPES:
+            event_type = "other"
+        impact_horizon = obj.get("impact_horizon")
+        if impact_horizon not in IMPACT_HORIZONS:
+            impact_horizon = None
+        sentiment_label = obj.get("sentiment_label")
+        if sentiment_label not in SENTIMENT_LABELS:
+            sentiment_label = None
+        impact_level = obj.get("impact_level")
+        if impact_level not in IMPACT_LEVELS:
+            impact_level = None
+        signal = obj.get("signal")
+        if signal not in SIGNALS:
+            signal = None
+        actionable = obj.get("actionable")
+        if not isinstance(actionable, bool):
+            actionable = None
+        sectors = self._normalize_str_list(obj.get("sectors"), SECTORS)
+        entities = self._normalize_entities(obj.get("entities"))
+        key_facts = self._normalize_key_facts(obj.get("key_facts"))
+        # Build validated payload for llm_financial_metrics
+        metrics = {
+            "ticker": obj.get("ticker"),
+            "event_type": event_type,
+            "overall_sentiment": self._clamp_score(obj.get("overall_sentiment")),
+            "forward_sentiment": self._clamp_score(obj.get("forward_sentiment")),
+            "surprise_score": self._clamp_score(obj.get("surprise_score")),
+            "risk_score": self._clamp_score(obj.get("risk_score")),
+            "uncertainty_score": self._clamp_score(obj.get("uncertainty_score")),
+            "impact_strength": self._clamp_score(obj.get("impact_strength")),
+            "immediacy": self._clamp_score(obj.get("immediacy")),
+            "impact_horizon": impact_horizon,
+            "confidence": self._clamp_confidence(obj.get("confidence")),
+            "novelty_score": self._clamp_score(obj.get("novelty_score")),
+            "sentiment_label": sentiment_label,
+            "impact_level": impact_level,
+            "signal": signal,
+            "actionable": actionable,
+            "sectors": sectors,
+            "entities": entities,
+            "key_facts": key_facts,
+        }
+        out["llm_financial_metrics"] = metrics
+        out["llm_entities"] = entities
+        # Flatten for production: one column per feature (DB + S3 CSV headers)
+        out["llm_ticker"] = metrics.get("ticker")
+        out["llm_event_type"] = metrics.get("event_type")
+        out["llm_overall_sentiment"] = metrics.get("overall_sentiment")
+        out["llm_forward_sentiment"] = metrics.get("forward_sentiment")
+        out["llm_surprise_score"] = metrics.get("surprise_score")
+        out["llm_risk_score"] = metrics.get("risk_score")
+        out["llm_uncertainty_score"] = metrics.get("uncertainty_score")
+        out["llm_impact_strength"] = metrics.get("impact_strength")
+        out["llm_immediacy"] = metrics.get("immediacy")
+        out["llm_impact_horizon"] = metrics.get("impact_horizon")
+        out["llm_confidence"] = metrics.get("confidence")
+        out["llm_novelty_score"] = metrics.get("novelty_score")
+        out["llm_sentiment_label"] = metrics.get("sentiment_label")
+        out["llm_impact_level"] = metrics.get("impact_level")
+        out["llm_signal"] = metrics.get("signal")
+        out["llm_actionable"] = metrics.get("actionable")
+        out["llm_sectors"] = sectors
+        out["llm_key_facts"] = key_facts
+        return out
+
+
+# ============================================================================
+# Agentic enricher
+# ============================================================================
+
+
+class AgenticTextEnricher:
+    """
+    Enriches a DataFrame of articles using an LLM (provider-agnostic).
+
+    Production-ready: optional batching, skip on missing client, per-row error
+    handling so one failure does not fail the whole batch.
+    """
+
+    def __init__(
+        self,
+        client: LLMClient,
+        task: Optional[EnrichmentTask] = None,
+        text_column: str = "content",
+        skip_on_error: bool = True,
+    ):
+        self.client = client
+        self.task = task or SummaryAndThemesTask()
+        self.text_column = text_column
+        self.skip_on_error = skip_on_error
+
+    def enrich_row(self, row: pd.Series) -> Dict[str, Any]:
+        """Enrich a single row; returns dict to merge. Retries once on JSON parse failure."""
+        try:
+            prompt = self.task.build_prompt(row)
+            messages = [LLMMessage(role="user", content=prompt)]
+            if self.task.system_prompt:
+                messages.insert(
+                    0,
+                    LLMMessage(role="system", content=self.task.system_prompt),
+                )
+            response = self.client.complete(messages)
+            parsed = self.task.parse_response(response.content)
+            # Retry once if the only failure was JSON parse (transient model output)
+            if (
+                parsed.get("llm_error") == "Failed to parse JSON from response"
+                and self.skip_on_error
+            ):
+                response2 = self.client.complete(messages)
+                parsed = self.task.parse_response(response2.content)
+            return parsed
+        except Exception as e:
+            logger.warning("Agentic enrich failed for row: %s", e)
+            if self.skip_on_error:
+                return {"llm_error": str(e)}
+            raise
+
+    def enrich_dataframe(
+        self,
+        df: pd.DataFrame,
+        max_rows: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """
+        Add LLM-derived columns to the DataFrame.
+
+        New columns: llm_summary, llm_themes, (and any from task.parse_response).
+        """
+        if df.empty:
+            return df
+        out = df.copy()
+        to_process = len(df)
+        if max_rows is not None:
+            to_process = min(to_process, max_rows)
+        progress_interval = max(1, to_process // 20)  # print ~20 times over the run
+        date_range_msg = self._format_daterange_for_progress(df.iloc[:to_process])
+        print(f"Agentic enrichment: processing {to_process} rows (daterange: {date_range_msg}, progress every {progress_interval} rows)")
+        for idx in range(to_process):
+            row = df.iloc[idx]
+            row_ix = out.index[idx]  # use index label for .at (handles list/dict values)
+            try:
+                parsed = self.enrich_row(row)
+                for key, value in parsed.items():
+                    if key not in out.columns:
+                        out[key] = None
+                    out.at[row_ix, key] = value
+            except Exception as e:
+                if self.skip_on_error:
+                    if "llm_error" not in out.columns:
+                        out["llm_error"] = None
+                    out.at[row_ix, "llm_error"] = str(e)
+                else:
+                    raise
+            if (idx + 1) % progress_interval == 0 or (idx + 1) == to_process:
+                print(f"  progress: {idx + 1}/{to_process} rows")
+        print(f"Agentic enrichment done: {to_process} rows")
+        return out
+
+    def _format_daterange_for_progress(self, slice_df: pd.DataFrame) -> str:
+        """Return a short daterange string from the dataframe slice's datetime column for progress messages."""
+        if slice_df.empty or "datetime" not in slice_df.columns:
+            return "—"
+        try:
+            dt = pd.to_datetime(slice_df["datetime"], errors="coerce")
+            valid = dt.notna()
+            if not valid.any():
+                return "—"
+            mn, mx = dt.loc[valid].min(), dt.loc[valid].max()
+            if mn == mx:
+                return str(mn.date()) if hasattr(mn, "date") else str(mn)[:10]
+            return f"{mn.date()} to {mx.date()}" if hasattr(mn, "date") else f"{str(mn)[:10]} to {str(mx)[:10]}"
+        except Exception:
+            return "—"
+
+
+def agentic_enrich_pipeline(
+    df: pd.DataFrame,
+    client: LLMClient,
+    task: Optional[EnrichmentTask] = None,
+    max_rows: Optional[int] = None,
+) -> pd.DataFrame:
+    """
+    Convenience: run agentic enrichment on a transformed articles DataFrame.
+
+    Use after TextTransformationPipeline.transform(df).
+    """
+    enricher = AgenticTextEnricher(client=client, task=task)
+    return enricher.enrich_dataframe(df, max_rows=max_rows)

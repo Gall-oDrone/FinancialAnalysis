@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: financial-scraper
+  namespace: financial-analysis
+  labels:
+    app.kubernetes.io/name: financial-analysis
+    app.kubernetes.io/component: scraper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: financial-analysis
+      app.kubernetes.io/component: scraper
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: financial-analysis
+        app.kubernetes.io/component: scraper
+    spec:
+      serviceAccountName: financial-analysis-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: scraper
+          image: ${ECR_REPOSITORY_URL}:latest
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          envFrom:
+            - configMapRef:
+                name: financial-analysis-config
+            - secretRef:
+                name: db-credentials
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: data
+              mountPath: /app/data
+            - name: shm
+              mountPath: /dev/shm
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "print('alive')"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "print('ready')"
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "2Gi"
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "scraper"
+          effect: "NoSchedule"
+

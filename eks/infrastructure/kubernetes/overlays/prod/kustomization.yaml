@@ -1,0 +1,80 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: financial-analysis-prod
+
+namespace: financial-analysis
+
+resources:
+  - ../../base
+
+commonLabels:
+  environment: prod
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: "production"
+      - op: replace
+        path: /data/DEBUG
+        value: "False"
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: "WARNING"
+      - op: replace
+        path: /data/SCRAPING_DEBUG
+        value: "False"
+    target:
+      kind: ConfigMap
+      name: financial-analysis-config
+
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      name: financial-scraper
+
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "4Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2000m"
+    target:
+      kind: Deployment
+      name: financial-scraper
+
+  - patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 3
+      - op: replace
+        path: /spec/maxReplicas
+        value: 10
+    target:
+      kind: HorizontalPodAutoscaler
+      name: financial-scraper-hpa
+
+  - patch: |-
+      - op: replace
+        path: /spec/minAvailable
+        value: 2
+    target:
+      kind: PodDisruptionBudget
+      name: financial-scraper-pdb
+
+images:
+  - name: ${ECR_REPOSITORY_URL}
+    newTag: latest
+

@@ -242,7 +242,7 @@ financial_analysis/
 ├── config/                        # Configuration management
 │   ├── __init__.py
 │   └── settings.py
-├── DataProcessing/                # Data processing modules
+├── src/                           # Production code (pipelines, transform, export, etc.)
 ├── FinancialAnalysis/             # Financial analysis libraries
 ├── Storage/                       # Database and cloud storage
 ├── tests/                         # Test suite

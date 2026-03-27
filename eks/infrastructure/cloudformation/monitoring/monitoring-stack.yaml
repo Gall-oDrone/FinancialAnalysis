@@ -1,0 +1,361 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Financial Analysis - Monitoring and Logging Stack'
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: financial-analysis
+    Description: Name of the project
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues:
+      - 7
+      - 14
+      - 30
+      - 60
+      - 90
+      - 180
+      - 365
+    Description: Log retention period in days
+
+  EnableContainerInsights:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable CloudWatch Container Insights
+
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Email address for alerts (optional)
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+  EnableCI: !Equals [!Ref EnableContainerInsights, 'true']
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+  # ---------------------------------------------------------------------------
+  # CloudWatch Log Groups
+  # ---------------------------------------------------------------------------
+  ApplicationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/eks/${ProjectName}-${Environment}/application'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ScraperLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/eks/${ProjectName}-${Environment}/scraper'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  DataPipelineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/eks/${ProjectName}-${Environment}/data-pipeline'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ---------------------------------------------------------------------------
+  # SNS Topic for Alerts
+  # ---------------------------------------------------------------------------
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${Environment}-alerts'
+      DisplayName: Financial Analysis Alerts
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ---------------------------------------------------------------------------
+  # CloudWatch Dashboard
+  # ---------------------------------------------------------------------------
+  MainDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${ProjectName}-${Environment}-main'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 1,
+              "properties": {
+                "markdown": "# Financial Analysis - ${Environment} Dashboard"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 1,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "EKS Cluster - CPU Utilization",
+                "metrics": [
+                  ["AWS/EKS", "cluster_node_cpu_utilization", "ClusterName", "${ProjectName}-${Environment}"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8,
+              "y": 1,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "EKS Cluster - Memory Utilization",
+                "metrics": [
+                  ["AWS/EKS", "cluster_node_memory_utilization", "ClusterName", "${ProjectName}-${Environment}"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16,
+              "y": 1,
+              "width": 8,
+              "height": 6,
+              "properties": {
+                "title": "EKS Cluster - Running Pods",
+                "metrics": [
+                  ["AWS/EKS", "cluster_number_of_running_pods", "ClusterName", "${ProjectName}-${Environment}"]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 7,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "RDS - CPU & Connections",
+                "metrics": [
+                  ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${ProjectName}-${Environment}-db"],
+                  [".", "DatabaseConnections", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 7,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "RDS - Free Storage & IOPS",
+                "metrics": [
+                  ["AWS/RDS", "FreeStorageSpace", "DBInstanceIdentifier", "${ProjectName}-${Environment}-db"],
+                  [".", "ReadIOPS", ".", "."],
+                  [".", "WriteIOPS", ".", "."]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 0,
+              "y": 13,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "Application Logs (Recent Errors)",
+                "query": "SOURCE '/aws/eks/${ProjectName}-${Environment}/application' | fields @timestamp, @message | filter @message like /error|Error|ERROR/ | sort @timestamp desc | limit 50",
+                "region": "${AWS::Region}",
+                "view": "table"
+              }
+            }
+          ]
+        }
+
+  # ---------------------------------------------------------------------------
+  # CloudWatch Alarms
+  # ---------------------------------------------------------------------------
+  EKSNodeCountAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-eks-node-count-low'
+      AlarmDescription: EKS cluster has fewer nodes than expected
+      MetricName: cluster_failed_node_count
+      Namespace: AWS/EKS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: ClusterName
+          Value: !Sub '${ProjectName}-${Environment}'
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  ApplicationErrorLogAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-app-errors-high'
+      AlarmDescription: High number of application errors
+      MetricName: ErrorCount
+      Namespace: !Sub '${ProjectName}/${Environment}'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlertTopic
+      TreatMissingData: notBreaching
+
+  # ---------------------------------------------------------------------------
+  # Log Metric Filters
+  # ---------------------------------------------------------------------------
+  ErrorLogMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroup
+      FilterPattern: 'ERROR'
+      MetricTransformations:
+        - MetricName: ErrorCount
+          MetricNamespace: !Sub '${ProjectName}/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  ScraperFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ScraperLogGroup
+      FilterPattern: '[timestamp, level="ERROR", message="*scraping*failed*"]'
+      MetricTransformations:
+        - MetricName: ScraperFailureCount
+          MetricNamespace: !Sub '${ProjectName}/${Environment}'
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # ---------------------------------------------------------------------------
+  # IAM Role for Container Insights
+  # ---------------------------------------------------------------------------
+  ContainerInsightsRole:
+    Type: AWS::IAM::Role
+    Condition: EnableCI
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-container-insights-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: eks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-container-insights-role'
+        - Key: Environment
+          Value: !Ref Environment
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  ApplicationLogGroupArn:
+    Description: Application Log Group ARN
+    Value: !GetAtt ApplicationLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ApplicationLogGroupArn'
+
+  ScraperLogGroupArn:
+    Description: Scraper Log Group ARN
+    Value: !GetAtt ScraperLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ScraperLogGroupArn'
+
+  DataPipelineLogGroupArn:
+    Description: Data Pipeline Log Group ARN
+    Value: !GetAtt DataPipelineLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-DataPipelineLogGroupArn'
+
+  AlertTopicArn:
+    Description: SNS Alert Topic ARN
+    Value: !Ref AlertTopic
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-AlertTopicArn'
+
+  DashboardUrl:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${ProjectName}-${Environment}-main'
+

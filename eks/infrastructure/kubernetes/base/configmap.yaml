@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: financial-analysis-config
+  namespace: financial-analysis
+  labels:
+    app.kubernetes.io/name: financial-analysis
+data:
+  # Application Configuration
+  ENVIRONMENT: "development"
+  DEBUG: "False"
+  LOG_LEVEL: "INFO"
+  
+  # Scraping Configuration
+  SCRAPING_HEADLESS: "True"
+  SCRAPING_TIMEOUT: "30"
+  SCRAPING_DEBUG: "False"
+  
+  # Chrome Configuration
+  CHROME_BIN: "/usr/bin/chromium"
+  CHROMEDRIVER_PATH: "/usr/bin/chromedriver"
+

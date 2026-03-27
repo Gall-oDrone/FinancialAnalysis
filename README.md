@@ -7,23 +7,42 @@ A production-ready Python toolkit for financial data collection, processing, and
 - **Web Scraping**: Automated collection of financial news and stock market data
 - **API Integration**: Bitso cryptocurrency exchange API integration
 - **Data Storage**: PostgreSQL and AWS S3 storage solutions
+- **Data Transformation**: Production-ready ETL pipeline with ML/NLP transformations
+  - **News**: Sentiment analysis, intent classification, keyword extraction, ticker extraction
+  - **Agentic AI (optional)**: LLM-based enrichment for news (one-line summary, themes) via OpenAI/Claude; opt-in via `enable_agentic_transform`. See [docs/AGENTIC_AI_AND_BRANCHING.md](docs/AGENTIC_AI_AND_BRANCHING.md).
+  - **Stocks**: Returns, volatility, technical indicators (SMA, RSI, MACD, etc.)
+  - **GenAI Export**: JSONL format with optional embeddings for RAG applications
 - **Financial Analysis**: Advanced financial modeling and analysis libraries
-- **Data Processing**: Tools for data ingestion and transformation
+- **CLI Tools**: Command-line interface for ETL operations
 
-## Project Structure
+## Project Structure (production layout)
 
 ```
 financial_analysis/
-├── BitsoApi/           # Bitso cryptocurrency exchange API integration
-├── DataProcessing/     # Data ingestion and transformation modules
-├── FinancialAnalysis/  # Financial modeling and analysis libraries
-├── Storage/            # Database and cloud storage modules
-├── WebScraping/        # Web scraping utilities for financial data
-├── tests/              # Unit and integration tests
-├── config/             # Configuration files
-├── logs/               # Application logs
-├── pyproject.toml      # Project configuration and dependencies
-└── README.md           # This file
+├── src/                    # Application code (canonical)
+│   ├── config/             # Configuration (settings)
+│   ├── core/               # Shared utilities (logging)
+│   ├── agents/             # LLM clients (OpenAI, Claude), agentic transform, MCP placeholder
+│   ├── rag/                # RAG (chunking, in-memory vector store)
+│   ├── storage/            # PostgreSQL and S3 (postgres/, cloud/)
+│   ├── ingestion/          # Data ingestion
+│   │   └── news/           # News scrapers, collectors, selectors
+│   ├── transform/          # ETL transforms
+│   │   ├── news/           # Text transformers, ticker extraction
+│   │   └── stocks/         # Stock transformers (returns, indicators)
+│   ├── export/             # GenAI/JSONL export
+│   └── pipelines/         # Pipeline orchestration and ETL CLI
+├── notebooks/              # All notebooks
+│   ├── ingestion/          # Data ingestion (text, stocks)
+│   ├── scraping/           # News and stock collectors
+│   └── analysis/           # Financial analysis
+├── tests/                  # Unit and integration tests
+├── BitsoApi/               # Bitso API integration (standalone)
+├── FinancialAnalysis/     # Financial modeling libraries (standalone)
+├── scripts/                # Operational scripts
+├── docs/                   # Documentation
+├── pyproject.toml
+└── README.md
 ```
 
 ## Installation
@@ -137,6 +156,56 @@ s3.upload_dataframe_to_csv(
     prefix_path="stocks"
 )
 ```
+
+### Data Transformation
+
+Use the production package layout (`src/`). Run from repo root with `PYTHONPATH=src` or after `pip install -e .`:
+
+```python
+# News transformation with NLP
+from transform.news.text_transformers import TextTransformationPipeline
+
+pipeline = TextTransformationPipeline(
+    sentiment_backend="vader",
+    extract_tickers=True
+)
+transformed_news = pipeline.transform(news_df)
+
+# Stock transformation with technical indicators
+from transform.stocks.stock_transformers import StockTransformationPipeline
+
+stock_pipeline = StockTransformationPipeline()
+transformed_stocks = stock_pipeline.transform(stocks_df)
+
+# Export for GenAI/RAG
+from export.genai_export import export_to_jsonl
+
+export_to_jsonl(transformed_news, "output/news.jsonl")
+```
+
+### ETL CLI
+
+From repo root with `PYTHONPATH=src` or after `pip install -e .`:
+
+```bash
+# Ingest and transform stocks
+python -m pipelines.etl_cli ingest-stocks --since 2026-01-01 --until 2026-01-28
+python -m pipelines.etl_cli transform-stocks --since 2026-01-01 --output transformed.csv
+
+# Transform news with sentiment analysis
+python -m pipelines.etl_cli transform-news --date 2026-01-27 --sentiment vader
+
+# News ETL with optional agentic (LLM) enrichment: set enable_agentic_transform=True
+# or LLM_ENABLE_AGENTIC_TRANSFORM=true and OPENAI_API_KEY or ANTHROPIC_API_KEY.
+# Postgres: financial_news_transformed has llm_summary, llm_themes, agentic_enabled.
+# S3: paths include agentic=true/ or agentic=false/ for comparison.
+
+# Export for GenAI with embeddings
+python -m pipelines.etl_cli export-genai --date 2026-01-27 --embeddings
+```
+
+See [docs/ETL_AND_TRANSFORMS.md](docs/ETL_AND_TRANSFORMS.md) for CLI and import reference; `notebooks/etl/` and `notebooks/ingestion/` for examples.  
+For agentic AI design and branching, see [docs/AGENTIC_AI_AND_BRANCHING.md](docs/AGENTIC_AI_AND_BRANCHING.md).
 
 ## Development
 

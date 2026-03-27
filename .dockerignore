@@ -77,7 +77,6 @@ data/
 
 # Notebooks (development only)
 WebScraping/notebooks/
-DataProcessing/
 FinancialAnalysis/Notebooks/
 
 # Tests (optional - exclude for smaller image)

@@ -79,6 +79,65 @@ class ScrapingConfig:
         return f"ScrapingConfig(debug={self.debug}, headless={self.headless})"
 
 
+class MLConfig:
+    """Machine Learning and NLP configuration."""
+
+    def __init__(self):
+        # Sentiment analysis settings
+        self.sentiment_backend: str = os.getenv("ML_SENTIMENT_BACKEND", "vader")
+        # Options: vader (fast), textblob (fast), transformers (accurate, slow)
+        
+        # Intent extraction settings
+        self.use_transformer_intents: bool = os.getenv(
+            "ML_USE_TRANSFORMER_INTENTS", "False"
+        ).lower() == "true"
+        
+        # Keyword extraction settings
+        self.keyword_method: str = os.getenv("ML_KEYWORD_METHOD", "tfidf")
+        # Options: tfidf, spacy, rake
+        self.keyword_top_n: int = int(os.getenv("ML_KEYWORD_TOP_N", "10"))
+        
+        # Model paths (for custom models)
+        self.sentiment_model_path: Optional[str] = os.getenv("ML_SENTIMENT_MODEL_PATH")
+        self.spacy_model: str = os.getenv("ML_SPACY_MODEL", "en_core_web_sm")
+
+    def __repr__(self) -> str:
+        return (
+            f"MLConfig(sentiment_backend={self.sentiment_backend}, "
+            f"keyword_method={self.keyword_method})"
+        )
+
+
+class PipelineConfig:
+    """Data pipeline configuration."""
+
+    def __init__(self):
+        # Pipeline behavior
+        self.default_topics: list = os.getenv(
+            "PIPELINE_DEFAULT_TOPICS", "crypto"
+        ).split(",")
+        self.enrich_full_content: bool = os.getenv(
+            "PIPELINE_ENRICH_CONTENT", "True"
+        ).lower() == "true"
+        self.continue_on_error: bool = os.getenv(
+            "PIPELINE_CONTINUE_ON_ERROR", "True"
+        ).lower() == "true"
+        
+        # S3 paths
+        self.s3_raw_prefix: str = os.getenv("PIPELINE_S3_RAW_PREFIX", "raw/news")
+        self.s3_transformed_prefix: str = os.getenv(
+            "PIPELINE_S3_TRANSFORMED_PREFIX", "transformed/news"
+        )
+        
+        # Database settings
+        self.db_table_name: str = os.getenv(
+            "PIPELINE_DB_TABLE", "financial_news_transformed"
+        )
+
+    def __repr__(self) -> str:
+        return f"PipelineConfig(topics={self.default_topics})"
+
+
 class Settings:
     """Main application settings."""
 
@@ -87,6 +146,8 @@ class Settings:
         self.aws = AWSConfig()
         self.logging = LoggingConfig()
         self.scraping = ScrapingConfig()
+        self.ml = MLConfig()
+        self.pipeline = PipelineConfig()
         self.debug: bool = os.getenv("DEBUG", "False").lower() == "true"
         self.environment: str = os.getenv("ENVIRONMENT", "development")
 

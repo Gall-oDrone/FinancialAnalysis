@@ -36,20 +36,20 @@ jobs:
     
     - name: Lint with flake8
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+        flake8 src tests --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src tests --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
     
     - name: Check formatting with black
       run: |
-        black --check .
+        black --check src tests
     
     - name: Check import sorting with isort
       run: |
-        isort --check-only .
+        isort --check-only src tests
     
     - name: Type check with mypy
       run: |
-        mypy . --ignore-missing-imports || true
+        mypy src --ignore-missing-imports || true
 
   test:
     runs-on: ubuntu-latest
@@ -79,14 +79,9 @@ jobs:
         pip install -e ".[dev]"
     
     - name: Run tests
+      env:
+        PYTHONPATH: src
       run: |
-        pytest --cov=. --cov-report=xml --cov-report=term-missing
+        pytest tests/ -v
     
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
 
