@@ -18,8 +18,11 @@ CLOUDFRONT_STACK_NAME="financial-analysis-ide-cloudfront"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 MAX_WAIT_TIME=3600
 POLL_INTERVAL=30
-LOG_FILE="${SCRIPT_DIR}/cleanup-cfn.log"
+LOG_DIR="${SCRIPT_DIR}/logs"
+LOG_FILE="${LOG_DIR}/cleanup-cfn.log"
 FORCE_DELETE=0
+
+mkdir -p "$LOG_DIR"
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"; }
