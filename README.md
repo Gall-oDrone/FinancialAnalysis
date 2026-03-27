@@ -10,6 +10,10 @@ A production-ready Python toolkit for financial data collection, processing, and
 - **Financial Analysis**: Advanced financial modeling and analysis libraries
 - **Data Processing**: Tools for data ingestion and transformation
 
+## Architecture Documentation
+
+- [`docs/application-integration-workload.md`](docs/application-integration-workload.md): Integration plan for EKS workloads, branch merge sequencing, and planned NVIDIA NeMo AI enrichment.
+
 ## Project Structure
 
 ```

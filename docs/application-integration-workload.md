@@ -29,7 +29,7 @@ This document describes how to integrate the `webscraping` and `feature/etl-tran
 
 ## Target Platform Topology
 
-###+ AWS components
+### AWS components
 
 - **EKS**: one cluster per environment (not one cluster per microservice).
 - **ECR**: container image registry for workloads.
@@ -38,7 +38,7 @@ This document describes how to integrate the `webscraping` and `feature/etl-tran
 - **Secrets Manager**: credentials and provider/API secrets.
 - **CloudWatch**: logs and metrics.
 
-###+ Kubernetes namespace model
+### Kubernetes namespace model
 
 - Namespace: `financial-analysis`
 - Per-workload service accounts with IRSA.
