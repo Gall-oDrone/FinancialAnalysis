@@ -87,6 +87,11 @@ services:
       # Chrome settings for container
       CHROME_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
+      # News collector (override via env or scripts/run_news_collector.sh)
+      NEWS_SCRAPE_TOPICS: ${NEWS_SCRAPE_TOPICS:-crypto}
+      NEWS_SCRAPE_SKIP_SCROLLING: ${NEWS_SCRAPE_SKIP_SCROLLING:-false}
+      NEWS_SCRAPE_MAX_ARTICLES: ${NEWS_SCRAPE_MAX_ARTICLES:-0}
+      NEWS_SCRAPE_SCROLL_TIMEOUT: ${NEWS_SCRAPE_SCROLL_TIMEOUT:-3}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
@@ -104,8 +109,8 @@ services:
     # Security options for Chrome
     security_opt:
       - seccomp:unconfined
-    # Override default command to run news collector
-    command: ["python", "-c", "print('Scraper container ready. Use docker-compose run scraper python <your_script.py>')"]
+    # Default: run news collector (override: docker compose run --rm scraper bash)
+    command: ["python", "WebScraping/src/collectors/news_collector_example.py"]
 
   # ---------------------------------------------------------------------------
   # ETL / transforms / GenAI export (pipelines.etl_cli)
