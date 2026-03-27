@@ -217,6 +217,7 @@ main() {
   fi
   cleanup_application "$APP_NAMESPACE"
   print_success "Application cleanup completed."
+  print_info "Next (optional): ./addons.sh $ENVIRONMENT to remove Helm add-ons, then ./cleanup.sh $ENVIRONMENT for full Terraform destroy."
 }
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
