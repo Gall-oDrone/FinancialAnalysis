@@ -1,5 +1,9 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: IAM resources (role and instance profile) for the Financial Analysis IDE environment.
+# Note: This template adds Terraform remote state (S3 + DynamoDB lock) permissions for
+# scripts/setup-backend.sh and deploy-development-eks.sh. Full terraform apply for VPC/EKS/RDS
+# still requires additional policies (EC2, EKS, RDS, IAM PassRole, etc.)—see README or attach
+# a broader managed policy for infrastructure work if needed.
 
 Parameters:
   ParentStackName:
@@ -44,6 +48,61 @@ Resources:
                 Action:
                   - iam:GetRole
                 Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/${ParentStackName}-ide-role
+        # Matches eks/infrastructure/scripts/setup-backend.sh and backend.tf defaults
+        - PolicyName: terraform-remote-state-backend
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: StsGetCallerIdentity
+                Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: "*"
+              - Sid: TerraformStateS3
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:HeadBucket
+                  - s3:GetBucketLocation
+                  - s3:GetBucketVersioning
+                  - s3:PutBucketVersioning
+                  - s3:GetBucketEncryption
+                  - s3:PutBucketEncryption
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:PutPublicAccessBlock
+                  - s3:ListBucket
+                  - s3:ListBucketVersions
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - arn:aws:s3:::financial-analysis-terraform-state
+                  - arn:aws:s3:::financial-analysis-terraform-state/*
+              - Sid: TerraformStateDynamoDBLock
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:ListTagsOfResource
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:ConditionCheckItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/financial-analysis-terraform-locks
+              - Sid: KmsForS3BucketEncryption
+                Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
