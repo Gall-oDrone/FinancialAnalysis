@@ -49,6 +49,21 @@ if [ ! -d "$ENV_DIR" ]; then
   exit 1
 fi
 
+# Remote state backend (S3 + DynamoDB) must exist before terraform init.
+# Reuses the same logic as eks/infrastructure/scripts/setup-backend.sh
+INFRA_ROOT="$(cd "$TERRAFORM_ROOT/.." && pwd)"
+SETUP_BACKEND_SCRIPT="$INFRA_ROOT/scripts/setup-backend.sh"
+if [ -f "$SETUP_BACKEND_SCRIPT" ]; then
+  print_info "Ensuring Terraform remote state backend (S3 bucket + DynamoDB lock table)..."
+  AWS_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null)}"
+  AWS_REGION="${AWS_REGION:-us-east-1}"
+  export AWS_REGION
+  bash "$SETUP_BACKEND_SCRIPT"
+else
+  print_error "Missing backend bootstrap script: $SETUP_BACKEND_SCRIPT"
+  exit 1
+fi
+
 cd "$ENV_DIR"
 print_info "Working directory: $(pwd)"
 
