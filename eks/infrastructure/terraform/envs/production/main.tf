@@ -2,6 +2,10 @@
 # Financial Analysis - Production Environment (Modules)
 # =============================================================================
 
+locals {
+  name = "${var.project_name}-${var.environment}"
+}
+
 module "vpc" {
   source = "../../modules/vpc"
 
@@ -48,7 +52,13 @@ module "iam_irsa" {
   oidc_provider_arn = module.eks.oidc_provider_arn
 
   irsa_policies = {
-    alb = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
+    "external-dns" = ["arn:aws:iam::aws:policy/AmazonRoute53FullAccess"]
+    alb            = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
+    "cert-manager" = ["arn:aws:iam::aws:policy/AmazonRoute53FullAccess"]
+    "external-secrets" = [
+      "arn:aws:iam::aws:policy/SecretsManagerReadWrite",
+      "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess",
+    ]
   }
 }
 

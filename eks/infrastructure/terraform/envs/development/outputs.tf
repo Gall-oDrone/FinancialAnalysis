@@ -49,6 +49,21 @@ output "irsa_role_arns" {
   value       = module.iam_irsa.irsa_role_arns
 }
 
+output "external_dns_irsa_role_arn" {
+  description = "IRSA role ARN for ExternalDNS"
+  value       = module.iam_irsa.irsa_role_arns["external-dns"]
+}
+
+output "cert_manager_irsa_role_arn" {
+  description = "IRSA role ARN for cert-manager (Route53 DNS-01 when configured)"
+  value       = module.iam_irsa.irsa_role_arns["cert-manager"]
+}
+
+output "external_secrets_irsa_role_arn" {
+  description = "IRSA role ARN for external-secrets operator"
+  value       = module.iam_irsa.irsa_role_arns["external-secrets"]
+}
+
 # RDS Outputs
 output "rds_endpoint" {
   description = "RDS endpoint"

@@ -32,59 +32,7 @@ locals {
   )
 }
 
-# ALB Controller IRSA: use ../../modules/iam (module.iam_irsa) — see env main.tf
-
-# -----------------------------------------------------------------------------
-# IAM Role for External DNS
-# -----------------------------------------------------------------------------
-resource "aws_iam_role" "external_dns" {
-  name = "${var.project_name}-${var.environment}-external-dns-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Federated = var.oidc_provider_arn
-        }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "${var.oidc_provider_url}:aud" = "sts.amazonaws.com"
-            "${var.oidc_provider_url}:sub" = "system:serviceaccount:kube-system:external-dns"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = local.tags
-}
-
-resource "aws_iam_role_policy" "external_dns" {
-  name = "external-dns-policy"
-  role = aws_iam_role.external_dns.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = "route53:ChangeResourceRecordSets"
-        Resource = "arn:aws:route53:::hostedzone/*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
+# ALB / ExternalDNS / cert-manager / external-secrets IRSA: ../../modules/iam (module.iam_irsa)
 
 # -----------------------------------------------------------------------------
 # IAM Role for Cluster Autoscaler
