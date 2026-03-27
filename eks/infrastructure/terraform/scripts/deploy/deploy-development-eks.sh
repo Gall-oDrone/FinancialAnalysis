@@ -50,7 +50,10 @@ if [ ! -d "$ENV_DIR" ]; then
 fi
 
 # Remote state backend (S3 + DynamoDB) must exist before terraform init.
-# Reuses the same logic as eks/infrastructure/scripts/setup-backend.sh
+# setup-backend.sh reuses existing bucket/table in this account when present,
+# creates them otherwise (and may use an account-scoped S3 bucket name if the
+# default is taken globally). It writes envs/*/backend.auto.hcl with the resolved
+# bucket and lock table for terraform init.
 INFRA_ROOT="$(cd "$TERRAFORM_ROOT/.." && pwd)"
 SETUP_BACKEND_SCRIPT="$INFRA_ROOT/scripts/setup-backend.sh"
 if [ -f "$SETUP_BACKEND_SCRIPT" ]; then
@@ -114,10 +117,16 @@ wait_for_nodes() {
   return 1
 }
 
-# Stage 1: Init
+# Stage 1: Init (prefer generated backend.auto.hcl from setup-backend.sh)
 print_info "Stage 1: Initializing Terraform..."
-BACKEND_CONFIG="$ENV_DIR/backend.hcl"
-if [ -f "$BACKEND_CONFIG" ]; then
+BACKEND_CONFIG=""
+if [ -f "$ENV_DIR/backend.auto.hcl" ]; then
+  BACKEND_CONFIG="$ENV_DIR/backend.auto.hcl"
+elif [ -f "$ENV_DIR/backend.hcl" ]; then
+  BACKEND_CONFIG="$ENV_DIR/backend.hcl"
+fi
+if [ -n "$BACKEND_CONFIG" ]; then
+  print_info "Using backend config: $BACKEND_CONFIG"
   terraform init -upgrade -backend-config="$BACKEND_CONFIG"
 else
   terraform init -upgrade
