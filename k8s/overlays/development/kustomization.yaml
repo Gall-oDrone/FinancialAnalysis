@@ -15,3 +15,6 @@ images:
   - name: financial-analysis-scraper
     newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-scraper
     newTag: latest
+  - name: financial-analysis-etl
+    newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-etl
+    newTag: latest

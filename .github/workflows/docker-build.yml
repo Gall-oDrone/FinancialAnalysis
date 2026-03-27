@@ -1,0 +1,32 @@
+# Validate Docker images build on PR (no push).
+name: Docker Build
+
+on:
+  pull_request:
+    branches: [main, master, feat/k8s-deployment-manifests]
+  push:
+    branches: [feat/k8s-deployment-manifests]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: services/scraper/Dockerfile
+          - dockerfile: services/etl/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

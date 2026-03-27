@@ -4,7 +4,7 @@ This directory contains Kubernetes manifests for the financial-analysis pipeline
 
 ## Layout
 
-- **`base/`** – Shared resources: ConfigMap, Secret, Postgres Deployment/Service, Scraper Deployment/Service.
+- **`base/`** – Shared resources: ConfigMap, Secret, Postgres Deployment/Service, Scraper Deployment/Service, ETL CronJobs (`cronjobs-etl.yaml`, suspended by default).
 - **`overlays/development`** – Development (EKS or remote): namespace, image overrides (e.g. GHCR).
 - **`overlays/dev`** – Local (kind/minikube): same resources, local image name.
 - **`scripts/`** – Helper scripts to apply overlays.
@@ -14,8 +14,9 @@ This directory contains Kubernetes manifests for the financial-analysis pipeline
 - `kubectl` installed and configured for your cluster.
 - For **dev (local)**:
   - [kind](https://kind.sigs.k8s.io/) or [minikube](https://minikube.sigs.k8s.io/).
-  - Scraper image built and loaded, e.g.:
-    - `docker build -t financial-analysis-scraper:latest -f Dockerfile --target production .`
+  - Images built and loaded, e.g.:
+    - `docker build -t financial-analysis-scraper:latest -f services/scraper/Dockerfile .`
+    - `docker build -t financial-analysis-etl:latest -f services/etl/Dockerfile .`
     - `kind load docker-image financial-analysis-scraper:latest` (if using kind).
 - For **development (remote/EKS)**:
   - Scraper image pushed to a registry (e.g. GHCR); set `newName`/`newTag` in `overlays/development/kustomization.yaml`.
@@ -52,11 +53,18 @@ This directory contains Kubernetes manifests for the financial-analysis pipeline
 
 ## CI/CD
 
-- **Build**: GitHub Actions build the scraper image and push to GHCR (see `.github/workflows/build.yml`).
-- **Deploy**: `.github/workflows/deploy-development.yml` applies `k8s/overlays/development` on push to the k8s branch (or manual trigger), using the built image.
+- **GHCR (optional)**: `.github/workflows/build.yml` builds the scraper image and pushes to `ghcr.io`.
+- **ECR**: `.github/workflows/ecr-publish.yml` builds `services/scraper` and `services/etl` and pushes to Amazon ECR (OIDC).
+- **Docker validation**: `.github/workflows/docker-build.yml` builds both images on PRs (no push).
+- **Deploy**: `.github/workflows/deploy-development.yml` applies `k8s/overlays/development` (configure `EKS_CLUSTER_NAME_DEVELOPMENT` and AWS OIDC secrets).
+- **Scripts**: `ci-cd/scripts/trigger-ecr-publish.sh`, `trigger-deploy-development.sh` (requires [GitHub CLI](https://cli.github.com/)).
 
-## Adding ETL and MCP
+## ETL CronJobs
 
-- Add new Deployments (and Services) in `base/` (e.g. `etl.yaml`, `mcp.yaml`).
-- Register them in `base/kustomization.yaml` under `resources` and `images` if they have their own image.
-- Reuse the same ConfigMap/Secret for DB and AWS config.
+- Defined in `base/cronjobs-etl.yaml` (image `financial-analysis-etl`). They start **suspended**; edit `suspend: false` and fix schedules when ready.
+- See `docs/KUBERNETES-DEPLOYMENT-PLAN.md` for rollout sequencing.
+
+## Adding more workloads
+
+- Add Deployments/CronJobs in `base/`, register in `base/kustomization.yaml`, and add an `images` entry if the workload uses a new image name.
+- Reuse the same ConfigMap/Secret for DB and AWS config where possible.

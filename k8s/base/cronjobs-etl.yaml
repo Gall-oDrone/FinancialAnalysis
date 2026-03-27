@@ -1,0 +1,164 @@
+# ETL CronJobs — use image financial-analysis-etl (same image, different commands).
+# Default: suspended until you validate connectivity and credentials in-cluster.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-transform-news
+  labels:
+    app: financial-analysis
+    component: etl
+spec:
+  suspend: true
+  schedule: "0 */6 * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: financial-analysis
+            component: etl
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: etl
+              image: financial-analysis-etl:latest
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - python -m pipelines.etl_cli transform-news --date $(date -u +%F)
+              env:
+                - name: PGDBHOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-host
+                - name: PGDBPORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-port
+                - name: PGDBNAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-dbname
+                - name: PGDBUSER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-user
+                - name: PGDBPASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: financial-analysis-secrets
+                      key: pg-password
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-transform-stocks
+  labels:
+    app: financial-analysis
+    component: etl
+spec:
+  suspend: true
+  schedule: "0 */4 * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: financial-analysis
+            component: etl
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: etl
+              image: financial-analysis-etl:latest
+              imagePullPolicy: IfNotPresent
+              args: ["transform-stocks"]
+              env:
+                - name: PGDBHOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-host
+                - name: PGDBPORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-port
+                - name: PGDBNAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-dbname
+                - name: PGDBUSER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-user
+                - name: PGDBPASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: financial-analysis-secrets
+                      key: pg-password
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-export-genai
+  labels:
+    app: financial-analysis
+    component: etl
+spec:
+  suspend: true
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: financial-analysis
+            component: etl
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: etl
+              image: financial-analysis-etl:latest
+              imagePullPolicy: IfNotPresent
+              args:
+                - export-genai
+                - --upload-s3
+              env:
+                - name: PGDBHOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-host
+                - name: PGDBPORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-port
+                - name: PGDBNAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-dbname
+                - name: PGDBUSER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: financial-analysis-config
+                      key: pg-user
+                - name: PGDBPASS
+                  valueFrom:
+                    secretKeyRef:
+                      name: financial-analysis-secrets
+                      key: pg-password

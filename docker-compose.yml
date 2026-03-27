@@ -64,8 +64,7 @@ services:
   scraper:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: production
+      dockerfile: services/scraper/Dockerfile
     container_name: financial_scraper
     restart: "no"
     environment:
@@ -107,6 +106,33 @@ services:
       - seccomp:unconfined
     # Override default command to run news collector
     command: ["python", "-c", "print('Scraper container ready. Use docker-compose run scraper python <your_script.py>')"]
+
+  # ---------------------------------------------------------------------------
+  # ETL / transforms / GenAI export (pipelines.etl_cli)
+  # ---------------------------------------------------------------------------
+  etl:
+    build:
+      context: .
+      dockerfile: services/etl/Dockerfile
+    container_name: financial_etl
+    restart: "no"
+    environment:
+      PGDBHOST: postgres
+      PGDBPORT: 5432
+      PGDBNAME: ${POSTGRES_DB:-financial_db}
+      PGDBUSER: ${POSTGRES_USER:-financial_user}
+      PGDBPASS: ${POSTGRES_PASSWORD:-financial_pass_123}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+    networks:
+      - financial_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - etl
+    command: ["--help"]
 
   # ---------------------------------------------------------------------------
   # Development Service (optional)

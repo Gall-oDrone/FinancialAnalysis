@@ -6,12 +6,16 @@ resources:
   - secret.yaml
   - postgres.yaml
   - scraper.yaml
+  - cronjobs-etl.yaml
 
 commonLabels:
   app: financial-analysis
 
 images:
-  # Override in overlays with actual registry (e.g. ghcr.io/owner/financial_analysis/scraper)
+  # Override in overlays with ECR or GHCR
   - name: financial-analysis-scraper
     newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-scraper
+    newTag: latest
+  - name: financial-analysis-etl
+    newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-etl
     newTag: latest
