@@ -351,7 +351,7 @@ def main():
         print("-" * 70)
         driver = create_driver()
         try:
-            driver.set_page_load_timeout(30)
+            driver.set_page_load_timeout(90)
             driver.get(url)
             WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             time.sleep(3)
