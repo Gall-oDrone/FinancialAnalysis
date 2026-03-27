@@ -92,8 +92,16 @@ destroy_terraform() {
     fi
     
     log_info "Destroying Terraform infrastructure for ${ENVIRONMENT}..."
-    
-    cd "$(dirname "$0")/../terraform/environments/${ENVIRONMENT}"
+
+    # Stack roots live under terraform/envs/ (not terraform/environments/).
+    case "${ENVIRONMENT}" in
+        dev)  TF_ENV_DIR="development" ;;
+        staging) TF_ENV_DIR="staging" ;;
+        prod) TF_ENV_DIR="production" ;;
+        *)    log_error "Unhandled environment for Terraform path: ${ENVIRONMENT}"; return 1 ;;
+    esac
+
+    cd "$(dirname "$0")/../terraform/envs/${TF_ENV_DIR}"
     
     # Initialize Terraform
     terraform init
