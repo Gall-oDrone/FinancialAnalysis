@@ -58,7 +58,7 @@ INFRA_ROOT="$(cd "$TERRAFORM_ROOT/.." && pwd)"
 SETUP_BACKEND_SCRIPT="$INFRA_ROOT/scripts/setup-backend.sh"
 if [ -f "$SETUP_BACKEND_SCRIPT" ]; then
   print_info "Ensuring Terraform remote state backend (S3 bucket + DynamoDB lock table)..."
-  AWS_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null)}"
+  AWS_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || true)}"
   AWS_REGION="${AWS_REGION:-us-east-1}"
   export AWS_REGION
   if ! bash "$SETUP_BACKEND_SCRIPT"; then
@@ -142,7 +142,7 @@ timeout 1800 terraform apply -target=module.vpc -target=module.eks -auto-approve
 CLUSTER_NAME=$(terraform output -raw cluster_name 2>/dev/null || echo "")
 AWS_REGION=$(terraform output -raw aws_region 2>/dev/null || echo "")
 AWS_REGION=${AWS_REGION:-${AWS_REGION:-$AWS_DEFAULT_REGION}}
-AWS_REGION=${AWS_REGION:-$(aws configure get region 2>/dev/null)}
+AWS_REGION=${AWS_REGION:-$(aws configure get region 2>/dev/null || true)}
 AWS_REGION=${AWS_REGION:-us-east-1}
 
 if [ -z "$CLUSTER_NAME" ]; then
