@@ -10,6 +10,9 @@ kubernetes_version = "1.29"
 db_name            = "financial_db"
 db_username        = "financial_user"
 
+# Use Docker (or another non-AWS DB) for dev; set true for RDS in this account.
+enable_rds = false
+
 tags = {
   Team       = "data-engineering"
   CostCenter = "development"

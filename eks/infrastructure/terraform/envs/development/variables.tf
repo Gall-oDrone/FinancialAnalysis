@@ -44,6 +44,12 @@ variable "db_username" {
   default     = "financial_user"
 }
 
+variable "enable_rds" {
+  description = "Provision RDS PostgreSQL. Set false in dev when using Docker or another local DB."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags"
   type        = map(string)

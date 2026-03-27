@@ -73,9 +73,10 @@ module "iam_irsa" {
 }
 
 # -----------------------------------------------------------------------------
-# RDS Module
+# RDS Module (optional — disabled by default in dev; use Docker Postgres locally)
 # -----------------------------------------------------------------------------
 module "rds" {
+  count  = var.enable_rds ? 1 : 0
   source = "../../modules/rds"
 
   project_name               = var.project_name

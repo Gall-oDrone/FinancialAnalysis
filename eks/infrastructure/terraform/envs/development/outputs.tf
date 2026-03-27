@@ -64,15 +64,15 @@ output "external_secrets_irsa_role_arn" {
   value       = module.iam_irsa.irsa_role_arns["external-secrets"]
 }
 
-# RDS Outputs
+# RDS Outputs (null when enable_rds is false)
 output "rds_endpoint" {
   description = "RDS endpoint"
-  value       = module.rds.endpoint
+  value       = var.enable_rds ? module.rds[0].endpoint : null
 }
 
 output "rds_secret_arn" {
   description = "RDS credentials secret ARN"
-  value       = module.rds.secret_arn
+  value       = var.enable_rds ? module.rds[0].secret_arn : null
 }
 
 # Security Outputs
