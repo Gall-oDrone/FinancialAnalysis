@@ -58,7 +58,11 @@ if [ -f "$SETUP_BACKEND_SCRIPT" ]; then
   AWS_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null)}"
   AWS_REGION="${AWS_REGION:-us-east-1}"
   export AWS_REGION
-  bash "$SETUP_BACKEND_SCRIPT"
+  if ! bash "$SETUP_BACKEND_SCRIPT"; then
+    print_error "Terraform backend bootstrap failed (see messages above)."
+    print_error "If you see AccessDenied, this role needs s3:CreateBucket (and related), dynamodb:CreateTable, or an admin must run: $SETUP_BACKEND_SCRIPT"
+    exit 1
+  fi
 else
   print_error "Missing backend bootstrap script: $SETUP_BACKEND_SCRIPT"
   exit 1
