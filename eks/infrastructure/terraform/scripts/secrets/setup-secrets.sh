@@ -79,5 +79,9 @@ done
 
 echo ""
 print_success "Secret setup complete."
-print_info "Next: deploy Kubernetes manifests; External Secrets Operator will sync. DB credentials are created by Terraform (RDS module)."
-print_info "Paths: eks/infrastructure/terraform/envs/development (terraform output ci_role_arn if applicable)."
+print_info "Next: deploy Kubernetes manifests; External Secrets Operator will sync from AWS Secrets Manager paths above."
+print_info "RDS master credentials: created by Terraform when enable_rds is true (see terraform output rds_secret_arn)."
+print_info "GitHub Actions (ECR/EKS OIDC role) is NOT stored here — copy from Terraform after apply:"
+print_info "  cd eks/infrastructure/terraform/envs/development && terraform output -raw github_actions_role_arn"
+print_info "Paste that value into GitHub: Settings → Secrets → AWS_GITHUB_ACTIONS_ROLE_ARN"
+print_info "If the k8s branch adds new ExternalSecret keys, add matching create_or_update_secret calls here."

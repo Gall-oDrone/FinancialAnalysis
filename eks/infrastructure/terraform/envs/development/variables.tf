@@ -55,3 +55,33 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "github_organization" {
+  description = "GitHub org for Actions OIDC trust (must match repo owner)"
+  type        = string
+  default     = "Gall-oDrone"
+}
+
+variable "github_repository" {
+  description = "GitHub repository name for OIDC sub claim"
+  type        = string
+  default     = "FinancialAnalysis"
+}
+
+variable "create_github_oidc_provider" {
+  description = "Create account-level OIDC provider for token.actions.githubusercontent.com. Set false if it already exists (use oidc_provider_arn_override)."
+  type        = bool
+  default     = true
+}
+
+variable "github_oidc_provider_arn_override" {
+  description = "When create_github_oidc_provider is false, set to existing provider ARN"
+  type        = string
+  default     = ""
+}
+
+variable "github_actions_enable_eks_access" {
+  description = "Create EKS access entry + admin policy for the GitHub Actions role (kubectl in deploy workflow)"
+  type        = bool
+  default     = true
+}

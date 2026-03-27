@@ -85,3 +85,14 @@ output "data_bucket_name" {
   description = "S3 data bucket name"
   value       = module.security.data_bucket_name
 }
+
+# GitHub Actions (repository secret AWS_GITHUB_ACTIONS_ROLE_ARN — not stored in AWS Secrets Manager)
+output "github_actions_role_arn" {
+  description = "Set as GitHub Actions secret AWS_GITHUB_ACTIONS_ROLE_ARN for ecr-publish / deploy workflows"
+  value       = module.github_actions_oidc.github_actions_role_arn
+}
+
+output "github_oidc_provider_arn" {
+  description = "IAM OIDC provider for token.actions.githubusercontent.com (account-level)"
+  value       = module.github_actions_oidc.oidc_provider_arn
+}

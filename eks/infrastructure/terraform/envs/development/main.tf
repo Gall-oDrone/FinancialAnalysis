@@ -111,3 +111,23 @@ module "security" {
 
   tags = var.tags
 }
+
+# -----------------------------------------------------------------------------
+# GitHub Actions OIDC (ECR publish + EKS deploy workflows — same AWS account)
+# -----------------------------------------------------------------------------
+module "github_actions_oidc" {
+  source = "../../modules/github_actions_oidc"
+
+  name_prefix = local.name
+
+  github_organization = var.github_organization
+  github_repository   = var.github_repository
+
+  create_oidc_provider = var.create_github_oidc_provider
+  oidc_provider_arn    = var.github_oidc_provider_arn_override
+
+  eks_cluster_name        = module.eks.cluster_name
+  enable_eks_access_entry = var.github_actions_enable_eks_access
+
+  tags = var.tags
+}
