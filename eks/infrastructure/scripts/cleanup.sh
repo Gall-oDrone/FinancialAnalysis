@@ -38,6 +38,74 @@ usage() {
     echo "  -t, --terraform      Destroy Terraform infrastructure"
     echo "  -a, --all            Cleanup everything"
     echo "  -h, --help           Show this help message"
+    echo ""
+    echo "After a successful Terraform destroy, related CloudWatch log groups are removed:"
+    echo "  - /aws/vpc/<project>-<env>/flow-logs (VPC flow logs)"
+    echo "  - /aws/eks/<project>-<env>/... (EKS control plane logs)"
+    echo "  - /aws/rds/instance/<project>-<env>-db/... (RDS exports, if RDS was enabled)"
+}
+
+# Terraform tfvars use: dev, staging, prod as the environment suffix in resource names.
+get_cluster_name() {
+    case "${ENVIRONMENT}" in
+        dev)     echo "${PROJECT_NAME}-dev" ;;
+        staging) echo "${PROJECT_NAME}-staging" ;;
+        prod)    echo "${PROJECT_NAME}-prod" ;;
+        *)       log_error "Invalid environment for cluster name: ${ENVIRONMENT}"; return 1 ;;
+    esac
+}
+
+# Deletes CloudWatch log groups created by this stack (VPC flow logs, EKS cluster logging).
+# Safe to call after terraform destroy; orphaned groups from partial/failed deploys are removed.
+cleanup_cloudwatch_log_groups() {
+    local cluster_name vpc_flow_log_group prefix groups
+    cluster_name=$(get_cluster_name) || return 1
+    vpc_flow_log_group="/aws/vpc/${cluster_name}/flow-logs"
+    prefix="/aws/eks/${cluster_name}/"
+
+    log_info "Deleting CloudWatch log groups for ${cluster_name} (region ${AWS_REGION})..."
+
+    groups=$(aws logs describe-log-groups --region "${AWS_REGION}" \
+        --log-group-name-prefix "${prefix}" \
+        --query 'logGroups[*].logGroupName' --output text 2>/dev/null || true)
+
+    if [ -n "${groups}" ] && [ "${groups}" != "None" ]; then
+        echo "${groups}" | tr '\t' '\n' | while read -r lg; do
+            [ -z "${lg}" ] && continue
+            log_info "Deleting EKS log group: ${lg}"
+            if aws logs delete-log-group --log-group-name "${lg}" --region "${AWS_REGION}" 2>/dev/null; then
+                :
+            else
+                log_warn "Could not delete ${lg} (may require emptying streams or extra permissions)"
+            fi
+        done
+    else
+        log_info "No EKS log groups under prefix ${prefix}"
+    fi
+
+    local rds_prefix="/aws/rds/instance/${cluster_name}-db/"
+    groups=$(aws logs describe-log-groups --region "${AWS_REGION}" \
+        --log-group-name-prefix "${rds_prefix}" \
+        --query 'logGroups[*].logGroupName' --output text 2>/dev/null || true)
+
+    if [ -n "${groups}" ] && [ "${groups}" != "None" ]; then
+        echo "${groups}" | tr '\t' '\n' | while read -r lg; do
+            [ -z "${lg}" ] && continue
+            log_info "Deleting RDS log group: ${lg}"
+            aws logs delete-log-group --log-group-name "${lg}" --region "${AWS_REGION}" 2>/dev/null || \
+                log_warn "Could not delete ${lg}"
+        done
+    else
+        log_info "No RDS log groups under prefix ${rds_prefix}"
+    fi
+
+    if aws logs delete-log-group --log-group-name "${vpc_flow_log_group}" --region "${AWS_REGION}" 2>/dev/null; then
+        log_info "Deleted VPC flow log group: ${vpc_flow_log_group}"
+    else
+        log_info "VPC flow log group not present or already removed: ${vpc_flow_log_group}"
+    fi
+
+    log_info "CloudWatch log group cleanup finished"
 }
 
 cleanup_kubernetes() {
@@ -108,10 +176,12 @@ destroy_terraform() {
     
     # Destroy
     terraform destroy -auto-approve
-    
+
     cd - > /dev/null
-    
+
     log_info "Terraform infrastructure destroyed"
+
+    cleanup_cloudwatch_log_groups
 }
 
 # Parse arguments
