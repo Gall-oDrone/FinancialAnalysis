@@ -10,11 +10,13 @@ resources:
 patchesStrategicMerge:
   - development-patches.yaml
 
-# Set image from GitHub Container Registry (replace OWNER with your GitHub org/user)
+# Set image from Amazon ECR (option A: use `:latest` built by GitHub Actions)
 images:
-  - name: financial-analysis-scraper
-    newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-scraper
+  # Base kustomization rewrites `financial-analysis-scraper` -> GHCR placeholder.
+  # Override those placeholder image names to point at ECR instead.
+  - name: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-scraper
+    newName: 326105557351.dkr.ecr.us-east-1.amazonaws.com/financial-analysis-scraper
     newTag: latest
-  - name: financial-analysis-etl
-    newName: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-etl
+  - name: ghcr.io/PLACEHOLDER_OWNER/financial-analysis-etl
+    newName: 326105557351.dkr.ecr.us-east-1.amazonaws.com/financial-analysis-etl
     newTag: latest
