@@ -44,13 +44,13 @@ dependencies = [
     "numpy>=1.24.0",
 ]
 
-[project.optional-dependencies.ml]
-# Heavy ML dependencies (transformers, spacy) - install with: pip install -e ".[ml]"
-transformers = ["transformers>=4.35.0", "torch>=2.0.0"]
-spacy = ["spacy>=3.7.0"]
-all = ["transformers>=4.35.0", "torch>=2.0.0", "spacy>=3.7.0"]
-
 [project.optional-dependencies]
+ml = [
+    # Heavy ML dependencies (install with: `pip install -e ".[ml]"`)
+    "transformers>=4.35.0",
+    "torch>=2.0.0",
+    "spacy>=3.7.0",
+    ]
 mcp = [
     "mcp[cli]>=1.0.0",
 ]
