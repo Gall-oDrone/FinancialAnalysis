@@ -82,9 +82,10 @@ data "aws_iam_policy_document" "ecr_push" {
   }
 
   dynamic "statement" {
-    for_each = var.ecr_repository_names
+    for_each = { for idx, name in var.ecr_repository_names : idx => name }
     content {
-      sid    = "EcrPush-${replace(statement.value, "/", "-")}"
+      # IAM Statement IDs must be alphanumeric only (no hyphens).
+      sid    = "EcrPush${statement.key}"
       effect = "Allow"
       actions = [
         "ecr:BatchCheckLayerAvailability",
