@@ -69,9 +69,9 @@ variable "github_repository" {
 }
 
 variable "create_github_oidc_provider" {
-  description = "Create account-level OIDC provider for token.actions.githubusercontent.com. Set false if it already exists (use oidc_provider_arn_override)."
+  description = "Create account-level OIDC provider for token.actions.githubusercontent.com. Set true only in a greenfield account; set false when the provider already exists (common in shared AWS accounts)."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "github_oidc_provider_arn_override" {

@@ -31,14 +31,9 @@ variable "create_oidc_provider" {
 }
 
 variable "oidc_provider_arn" {
-  description = "Existing GitHub OIDC provider ARN when create_oidc_provider is false"
+  description = "When create_oidc_provider is false: optional override for the existing GitHub OIDC provider ARN. If empty, uses arn:aws:iam::<account>:oidc-provider/token.actions.githubusercontent.com."
   type        = string
   default     = ""
-
-  validation {
-    condition     = var.create_oidc_provider || var.oidc_provider_arn != ""
-    error_message = "When create_oidc_provider is false, oidc_provider_arn must be set to the existing token.actions.githubusercontent.com provider ARN."
-  }
 }
 
 variable "enable_eks_access_entry" {

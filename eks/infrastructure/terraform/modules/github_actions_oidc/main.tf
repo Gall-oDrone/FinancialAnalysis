@@ -12,7 +12,12 @@ locals {
   # Subject claim: repo:ORG/REPO:ref:refs/heads/branch or repo:ORG/REPO:environment:name
   repo_subject = "repo:${var.github_organization}/${var.github_repository}:*"
 
-  oidc_provider_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : var.oidc_provider_arn
+  # When create_oidc_provider is false and no override, use IAM's fixed ARN shape for GitHub's issuer
+  # (avoids 409 EntityAlreadyExists when the provider was created by another stack or manually).
+  github_oidc_provider_arn_implicit = "arn:aws:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com"
+  oidc_provider_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : (
+    var.oidc_provider_arn != "" ? var.oidc_provider_arn : local.github_oidc_provider_arn_implicit
+  )
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
