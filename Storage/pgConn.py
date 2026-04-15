@@ -133,6 +133,12 @@ class PgConn:
             row_dict = dict(zip(header, row_data))
         else:
             row_dict = row_data
+        # For news rows, proactively skip duplicates even if no DB unique constraint exists.
+        if self.is_duplicate_news_row(row_dict):
+            article_ref = self.get_news_identifier(row_dict)
+            print(f"skipped duplicate news article: {article_ref}")
+            cursor.close()
+            return False
         insert_sql = self.build_insert_sql(row_dict)
         try:
             cursor.execute(insert_sql, list(row_dict.values()))
@@ -145,6 +151,55 @@ class PgConn:
             print("error on saving data to pg:", e, "\n row_dict:", row_dict)
             print("failed")
             self.connection.rollback()
+            return False
+        finally:
+            cursor.close()
+        return True
+
+    def get_news_identifier(self, row_dict):
+        headline = row_dict.get("headline")
+        href = row_dict.get("href")
+        if headline and str(headline).strip():
+            if href and str(href).strip():
+                return f"'{str(headline).strip()}' ({str(href).strip()})"
+            return f"'{str(headline).strip()}'"
+        if href and str(href).strip():
+            return str(href).strip()
+        return "<unknown article>"
+
+    def is_duplicate_news_row(self, row_dict):
+        if not self.tablename or "news" not in self.tablename.lower():
+            return False
+        if "headline" not in row_dict and "href" not in row_dict:
+            return False
+        duplicate_conditions = []
+        duplicate_values = []
+
+        href = row_dict.get("href")
+        headline = row_dict.get("headline")
+        source = row_dict.get("source")
+        summary = row_dict.get("summary")
+
+        if href and str(href).strip():
+            duplicate_conditions.append("href = %s")
+            duplicate_values.append(str(href).strip())
+        elif headline and str(headline).strip() and source and str(source).strip():
+            duplicate_conditions.extend(["headline = %s", "source = %s"])
+            duplicate_values.extend([str(headline).strip(), str(source).strip()])
+        elif headline and str(headline).strip() and summary and str(summary).strip():
+            duplicate_conditions.extend(["headline = %s", "summary = %s"])
+            duplicate_values.extend([str(headline).strip(), str(summary).strip()])
+        else:
+            return False
+
+        query = f"SELECT 1 FROM {self.tablename} WHERE {' AND '.join(duplicate_conditions)} LIMIT 1"
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(query, tuple(duplicate_values))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"Error while checking duplicate news row: {e}")
+            return False
         finally:
             cursor.close()
 
