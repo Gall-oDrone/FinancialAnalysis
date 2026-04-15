@@ -40,6 +40,18 @@ jobs:
         run: |
           kubectl apply -k k8s/overlays/development
 
+      - name: Install/Upgrade Apache Airflow (Helm)
+        run: |
+          helm repo add apache-airflow https://airflow.apache.org
+          helm repo update
+          helm upgrade --install airflow apache-airflow/airflow \
+            --namespace airflow \
+            --create-namespace \
+            --values k8s/airflow/values-development.yaml \
+            --wait \
+            --timeout 10m
+
       - name: Show status
         run: |
           kubectl get pods,svc,cronjob -n "${{ env.NAMESPACE }}" || true
+          kubectl get pods,svc,ingress -n airflow || true

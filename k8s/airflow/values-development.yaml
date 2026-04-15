@@ -1,0 +1,48 @@
+executor: CeleryExecutor
+
+serviceAccount:
+  create: true
+  name: airflow
+
+postgresql:
+  enabled: true
+
+redis:
+  enabled: true
+
+webserver:
+  replicas: 1
+  defaultUser:
+    enabled: true
+    username: admin
+    password: admin
+  service:
+    type: ClusterIP
+
+scheduler:
+  replicas: 1
+
+workers:
+  replicas: 2
+
+dags:
+  gitSync:
+    enabled: true
+    repo: https://github.com/Gall-oDrone/FinancialAnalysis.git
+    branch: main
+    subPath: dags
+    depth: 1
+
+ingress:
+  web:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    hosts:
+      - name: airflow-dev.financial-analysis.local
+        path: /
+        pathType: Prefix
+
