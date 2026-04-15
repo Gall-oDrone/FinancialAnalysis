@@ -69,6 +69,10 @@ module "iam_irsa" {
       "arn:aws:iam::aws:policy/SecretsManagerReadWrite",
       "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess",
     ]
+    airflow = [
+      "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+      "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess",
+    ]
   }
 }
 

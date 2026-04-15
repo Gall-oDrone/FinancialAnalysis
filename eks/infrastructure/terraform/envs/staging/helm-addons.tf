@@ -161,3 +161,54 @@ resource "helm_release" "external_secrets" {
     })
   ]
 }
+
+resource "helm_release" "apache_airflow" {
+  name       = "airflow"
+  repository = "https://airflow.apache.org"
+  chart      = "airflow"
+  namespace  = "airflow"
+  version    = "1.15.0"
+
+  create_namespace = true
+
+  depends_on = [time_sleep.wait_for_alb_controller_webhook]
+
+  values = [
+    yamlencode({
+      executor = "CeleryExecutor"
+      serviceAccount = {
+        create = true
+        name   = "airflow"
+        annotations = {
+          "eks.amazonaws.com/role-arn" = module.iam_irsa.irsa_role_arns["airflow"]
+        }
+      }
+      scheduler = {
+        replicas = 1
+      }
+      webserver = {
+        replicas = 1
+      }
+      workers = {
+        replicas = 2
+      }
+      dags = {
+        gitSync = {
+          enabled = true
+          repo    = "https://github.com/Gall-oDrone/FinancialAnalysis.git"
+          branch  = "main"
+          subPath = "dags"
+        }
+      }
+      ingress = {
+        web = {
+          enabled   = true
+          className = "alb"
+          hosts = [
+            "airflow.${var.environment}.${var.project_name}.local"
+          ]
+        }
+      }
+    })
+  ]
+}
