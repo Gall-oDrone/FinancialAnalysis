@@ -468,7 +468,12 @@ class NewsScrapper(Scrapper):
         except Exception as e:
             print('While defining div_parent, error is: ', e)
 
-    def selectFullNewsElements(self, el):
+    def _is_full_news_content_loaded(self):
+        idx = self.df_store.row_index
+        content = self.df_store.data_frame.at[idx, "content"]
+        return pd.notna(content) and str(content).strip() and str(content).strip() != "nan"
+
+    def selectFullNewsElements(self, el, attempt=1):
         print("-------------------------------------------------------------------------")
         print('on selectFullNewsElements() method')
         print("-------------------------------------------------------------------------")
@@ -520,6 +525,25 @@ class NewsScrapper(Scrapper):
 
         except Exception as e:
             print('While defining div_parent, error is: ', e)
+
+        if not self._is_full_news_content_loaded() and attempt < 3:
+            print(f"  ⚠ Could not load full news article (attempt {attempt}/3). Reloading page and retrying...")
+            try:
+                self.driver.refresh()
+            except Exception as refresh_err:
+                print(f"  Refresh failed: {refresh_err}")
+            time.sleep(1)
+            query_by_cls = By.CLASS_NAME
+            query_html_el_root = 'caas-body-content'
+            query_html_el_wrap = 'caas-content-wrapper'
+            wait = WebDriverWait(self.driver, 1)
+            try:
+                root = wait.until(EC.presence_of_element_located((query_by_cls, query_html_el_root)))
+                self.clickOnReadMoreArticle()
+                el_retry = self.selectHTMLElements(root, query_by_cls, query_html_el_wrap)
+                self.selectFullNewsElements(el_retry, attempt=attempt + 1)
+            except Exception as retry_err:
+                print(f"  Retry after refresh failed: {retry_err}")
     
     def viewFullNewsArticle(self):
         #el.click()

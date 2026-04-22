@@ -11,8 +11,6 @@ from datetime import datetime
 from typing import List, Optional, Dict, Iterator
 from contextlib import contextmanager
 import logging
-import os
-import random
 
 from selenium import webdriver
 from selenium.webdriver.remote.webelement import WebElement
@@ -25,9 +23,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 from config.settings import get_settings
 from utils.logging import get_logger
-
-from Storage.pgConn import PgConn
-from Storage.PostgresSQL_table_queries import FINANCIAL_NEWS_TABLE_NAME
 
 
 # ============================================================================
@@ -172,29 +167,22 @@ class WebDriverManager:
         """Create and configure Chrome WebDriver."""
         from selenium.webdriver.chrome.service import Service as ChromeService
         from webdriver_manager.chrome import ChromeDriverManager
-
+        
         options = webdriver.ChromeOptions()
-        chrome_bin = os.getenv("CHROME_BIN")
-        if chrome_bin:
-            options.binary_location = chrome_bin
         options.add_argument(f"--user-agent={self.config.scraping.user_agent}")
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--disable-extensions")
         options.add_argument("--start-maximized")
-
-        if self.config.scraping.headless and not self.config.scraping.debug:
-            options.add_argument("--headless=new")
-
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--ignore-certificate-errors")
-
-        chromedriver_path = os.getenv("CHROMEDRIVER_PATH")
-        if chromedriver_path and os.path.isfile(chromedriver_path):
-            service = ChromeService(chromedriver_path)
-        else:
-            service = ChromeService(ChromeDriverManager().install())
+        
+        if not self.config.scraping.debug:
+            options.add_argument('--headless')
+        
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--ignore-certificate-errors')
+        
+        service = ChromeService(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
         self.logger.info("WebDriver created successfully")
         return driver
@@ -250,13 +238,11 @@ class ArticleExtractor:
     def _extract_headline(self, element: WebElement) -> str:
         """Extract headline from element."""
         try:
-            # Yahoo Finance changes class names often; keep fallbacks aligned with
-            # NewsCollector-Staging.ipynb (titles-link vs subtle-link ... titles).
+            # Try multiple selectors for robustness
             selectors = [
-                ".//a[contains(@class,'titles-link')]",
-                ".//a[contains(@class,'titles')]",
+                ".//a[@class='titles-link']",
                 ".//h3",
-                ".//div[contains(@class,'headline')]",
+                ".//div[@class='headline']"
             ]
             
             for selector in selectors:
@@ -276,22 +262,11 @@ class ArticleExtractor:
     def _extract_href(self, element: WebElement) -> str:
         """Extract article URL from element."""
         try:
-            for link in element.find_elements(By.XPATH, ".//a[@href]"):
-                href = (link.get_attribute("href") or "").strip()
-                if not href or "yahoo.com" not in href:
-                    continue
-                # Topic cards use finance.yahoo.com/news, news.yahoo.com, redirects, regional hosts, etc.
-                if any(
-                    p in href
-                    for p in (
-                        "/news",
-                        "/video/",
-                        "news.yahoo",
-                        "finance.yahoo",
-                    )
-                ):
-                    return href
-            raise NoSuchElementException("No Yahoo Finance news link in article element")
+            link = element.find_element(By.XPATH, ".//a")
+            href = link.get_attribute("href")
+            if not href or 'yahoo.com' not in href:
+                raise ValueError(f"Invalid href: {href}")
+            return href
         except Exception as e:
             self.logger.error(f"Error extracting href: {e}")
             raise
@@ -299,9 +274,7 @@ class ArticleExtractor:
     def _extract_metadata(self, element: WebElement) -> tuple[str, str]:
         """Extract source and timestamp from element."""
         try:
-            metadata_elem = element.find_element(
-                By.XPATH, ".//div[contains(@class,'publishing')]"
-            )
+            metadata_elem = element.find_element(By.XPATH, ".//div[@class='publishing']")
             text = metadata_elem.text.strip()
             
             # Parse "Source • timestamp" format
@@ -337,8 +310,9 @@ class ArticleExtractor:
         return False
     
     def _generate_id(self) -> int:
-        """Generate unique ID for article (fits PostgreSQL BIGINT / int8)."""
-        return random.randint(1, 2**63 - 1)
+        """Generate unique ID for article."""
+        import uuid
+        return uuid.uuid4().int
 
 
 class FullArticleExtractor:
@@ -475,12 +449,7 @@ class NewsScrapingService:
             # Extract article headers
             articles = self._extract_article_headers()
             self.logger.info(f"Found {len(articles)} articles")
-
-            max_articles = int(self.config.get("max_articles") or 0)
-            if max_articles > 0 and len(articles) > max_articles:
-                articles = articles[:max_articles]
-                self.logger.info("Processing first %s articles (max_articles cap)", max_articles)
-
+            
             # Extract full content for each article
             for article in articles:
                 try:
@@ -537,10 +506,10 @@ class NewsScrapingService:
         articles = []
         
         try:
-            # Story items only (exclude ad slots); matches notebook stream-item story-item
+            # Find all article elements
             article_elements = self.driver.find_elements(
-                By.XPATH,
-                "//li[contains(@class,'stream-item') and contains(@class,'story-item')]",
+                By.XPATH, 
+                "//li[contains(@class, 'stream-item')]"
             )
             
             self.logger.debug(f"Found {len(article_elements)} article elements")
@@ -568,44 +537,52 @@ class NewsScrapingService:
 # ============================================================================
 
 def create_news_scraping_service(
-    driver: webdriver.Chrome,
     config: Optional[Dict] = None,
-    repository: Optional[NewsRepository] = None,
+    repository: Optional[NewsRepository] = None
 ) -> NewsScrapingService:
     """
-    Build NewsScrapingService with an existing WebDriver (caller manages lifecycle).
-
+    Factory function to create NewsScrapingService with dependencies.
+    
     Args:
-        driver: Active Selenium Chrome WebDriver instance
         config: Optional configuration dict
-        repository: NewsRepository implementation (e.g. PostgreSQLNewsRepository)
-
+        repository: Optional repository instance
+        
     Returns:
         Configured NewsScrapingService instance
     """
+    settings = get_settings()
     logger = get_logger(__name__)
-
+    
+    # Use provided config or create default
     if config is None:
         config = {
-            "topics": ["crypto"],
-            "article_timeframe": ["yesterday", "days"],
-            "scroll_timeout": 3,
-            "skip_scrolling": False,
+            'topics': ['crypto'],
+            'article_timeframe': ['yesterday', 'days'],
+            'scroll_timeout': 3,
+            'skip_scrolling': False
         }
-
-    if repository is None:
-        raise ValueError("repository must be provided")
-
-    extractor = ArticleExtractor(config, logger)
-    full_extractor = FullArticleExtractor(driver, logger)
-    return NewsScrapingService(
-        driver=driver,
-        extractor=extractor,
-        full_extractor=full_extractor,
-        repository=repository,
-        config=config,
-        logger=logger,
-    )
+    
+    # Create WebDriver
+    with WebDriverManager(settings) as driver:
+        # Create extractors
+        extractor = ArticleExtractor(config, logger)
+        full_extractor = FullArticleExtractor(driver, logger)
+        
+        # Create repository if not provided
+        if repository is None:
+            # This would need actual DB connection
+            # repository = PostgreSQLNewsRepository(db_conn, table_name)
+            raise ValueError("Repository must be provided")
+        
+        # Create and return service
+        return NewsScrapingService(
+            driver=driver,
+            extractor=extractor,
+            full_extractor=full_extractor,
+            repository=repository,
+            config=config,
+            logger=logger
+        )
 
 
 # ============================================================================
@@ -613,40 +590,41 @@ def create_news_scraping_service(
 # ============================================================================
 
 def main():
-    """Run news scrape: PostgreSQL (PgConn) + Selenium, topics from NEWS_SCRAPE_TOPICS."""
+    """Example usage of the refactored news scraper."""
     settings = get_settings()
     logger = get_logger(__name__)
-
-    topics_raw = os.getenv("NEWS_SCRAPE_TOPICS", "crypto")
-    topics = [t.strip() for t in topics_raw.split(",") if t.strip()]
-    skip_scrolling = os.getenv("NEWS_SCRAPE_SKIP_SCROLLING", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-    )
-
+    
+    # Configuration
     config = {
-        "topics": topics,
-        "article_timeframe": ["yesterday", "days"],
-        "scroll_timeout": int(os.getenv("NEWS_SCRAPE_SCROLL_TIMEOUT", "3")),
-        "skip_scrolling": skip_scrolling,
-        "max_articles": int(os.getenv("NEWS_SCRAPE_MAX_ARTICLES", "0") or 0),
+        'topics': ['crypto'],
+        'article_timeframe': ['yesterday', 'days'],
+        'scroll_timeout': 3,
+        'skip_scrolling': False
     }
-
-    pg_conn = PgConn(tablename=FINANCIAL_NEWS_TABLE_NAME)
-    repository = PostgreSQLNewsRepository(pg_conn, FINANCIAL_NEWS_TABLE_NAME)
-
+    
+    # Create repository (would need actual DB connection)
+    # repository = PostgreSQLNewsRepository(db_conn, "financial_news")
+    
+    # Use context manager for WebDriver
     with WebDriverManager(settings) as driver:
-        service = create_news_scraping_service(
-            driver=driver,
-            config=config,
-            repository=repository,
-        )
-        for topic in config["topics"]:
-            articles = service.scrape_topic(topic)
-            logger.info("Finished topic %s: %s articles processed", topic, len(articles))
-
-    pg_conn.close_connection()
+        # Create extractors
+        extractor = ArticleExtractor(config, logger)
+        full_extractor = FullArticleExtractor(driver, logger)
+        
+        # Create service
+        # service = NewsScrapingService(
+        #     driver=driver,
+        #     extractor=extractor,
+        #     full_extractor=full_extractor,
+        #     repository=repository,
+        #     config=config,
+        #     logger=logger
+        # )
+        
+        # Scrape topics
+        # for topic in config['topics']:
+        #     articles = service.scrape_topic(topic)
+        #     logger.info(f"Scraped {len(articles)} articles for topic: {topic}")
 
 
 if __name__ == "__main__":
