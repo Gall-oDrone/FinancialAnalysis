@@ -10,22 +10,27 @@ This document describes how to integrate the `webscraping` and `feature/etl-tran
 
 ## Branch Integration Strategy
 
-### Source branches
+### Status on `main` (current)
 
-- `feat/eks-infrastructure-baseline`
-  - Terraform baseline for VPC, EKS, IAM, RDS, and security resources.
-- `webscraping`
-  - News and stock scraping producers.
-- `feature/etl-transforms`
-  - ETL pipelines, transforms, GenAI export workflow, and Kubernetes manifests.
+| Area | Status |
+|------|--------|
+| `feat/eks-infrastructure-baseline` | **Merged** — Terraform `envs/{development,staging,production}`, IDE CloudFormation, deploy/cleanup scripts, Helm addons (incl. Airflow), GitHub OIDC |
+| `webscraping` | **Merged** — `WebScraping/`, duplicate-news handling, Docker/Jupyter helpers |
+| `feature/etl-transforms` / k8s deployment | **Merged** — `src/` layout, ETL pipelines, agentic transforms, [`k8s/`](../../k8s/README.md) Kustomize manifests |
 
-### Integration order
+### Remaining implementation steps
 
-1. Keep `feat/eks-infrastructure-baseline` as infra foundation.
-2. Merge webscraping producers.
-3. Merge ETL/transforms processors.
-4. Standardize canonical package/runtime paths and environment contracts.
-5. Deploy with Kustomize overlays by environment (`dev`, `staging`, `prod`).
+1. Deploy infrastructure: `eks/infrastructure/terraform/envs/development` (or `scripts/deploy/deploy-development-eks.sh`).
+2. Build/push images to ECR; wire GitHub Actions OIDC if using CI deploy.
+3. Apply Kustomize overlays (`k8s/overlays/development` or `dev`) against the target cluster.
+4. Enable CronJobs (scraper, ETL) and validate RDS/S3 data paths.
+5. Optional: NVIDIA NeMo enrichment service (future phase).
+
+### Historical source branches
+
+- `feat/eks-infrastructure-baseline` — Terraform baseline for VPC, EKS, IAM, RDS, security.
+- `webscraping` — News and stock scraping producers.
+- `feature/etl-transforms` — ETL pipelines, transforms, GenAI export, Kubernetes manifests.
 
 ## Target Platform Topology
 

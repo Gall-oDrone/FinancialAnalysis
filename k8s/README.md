@@ -2,6 +2,8 @@
 
 This directory contains Kubernetes manifests for the financial-analysis pipeline (scraper, Postgres, and future ETL/MCP services), using [Kustomize](https://kustomize.io/) for base and environment-specific overlays.
 
+**Cluster provisioning** (VPC, EKS, RDS, IAM, Helm platform addons): see [`eks/infrastructure/`](../eks/infrastructure/README.md).
+
 ## Layout
 
 - **`base/`** – Shared resources: ConfigMap, Secret, Postgres Deployment/Service, Scraper Deployment/Service, ETL CronJobs (`cronjobs-etl.yaml`, suspended by default).

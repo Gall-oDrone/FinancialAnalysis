@@ -2,6 +2,9 @@
 
 | Guide | Description |
 |-------|-------------|
+| [application-integration-workload.md](application-integration-workload.md) | EKS integration and workload design |
+| [../eks/infrastructure/terraform/EKS-MIGRATION-PLAN.md](../eks/infrastructure/terraform/EKS-MIGRATION-PLAN.md) | Terraform env layout migration (`envs/` vs legacy `environments/`) |
+| [../eks/infrastructure/README.md](../eks/infrastructure/README.md) | EKS/CloudFormation IaC entry point |
 | [jupyter-docker.md](jupyter-docker.md) | Run Jupyter and notebooks in the Docker scraper container |
 | [ETL_AND_TRANSFORMS.md](ETL_AND_TRANSFORMS.md) | ETL pipeline and transforms |
 | [AGENTIC_AI_AND_BRANCHING.md](AGENTIC_AI_AND_BRANCHING.md) | Agentic AI enrichment and branching |
