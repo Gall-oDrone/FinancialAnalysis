@@ -7,6 +7,7 @@ resources:
   - postgres.yaml
   - scraper.yaml
   - cronjobs-etl.yaml
+  - airflow-rbac.yaml
 
 commonLabels:
   app: financial-analysis

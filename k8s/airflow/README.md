@@ -10,6 +10,21 @@ to install or upgrade Apache Airflow in the development EKS cluster.
   - ALB ingress configuration
   - DAG git-sync settings
 
+## Option B orchestration model
+
+Airflow is the scheduler/orchestrator of record for daily workloads:
+
+- DAG source: `dags/financial_analysis_daily.py`
+- Schedule: once every 24 hours (`0 0 * * *`)
+- Task runtime: Kubernetes pods in `financial-analysis-dev` namespace
+  using the existing scraper/etl images
+- Dependency graph:
+  - `scrape_news -> transform_news`
+  - `scrape_stocks -> transform_stocks`
+
+The deploy workflow overrides `dags.gitSync.branch` with `${GITHUB_REF_NAME}`
+to sync DAGs from the branch currently being deployed.
+
 ## Notes
 
 - Replace the default admin credentials before using in shared environments.

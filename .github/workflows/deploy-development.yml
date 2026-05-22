@@ -48,6 +48,7 @@ jobs:
             --namespace airflow \
             --create-namespace \
             --values k8s/airflow/values-development.yaml \
+            --set dags.gitSync.branch="${GITHUB_REF_NAME}" \
             --wait \
             --timeout 10m
 

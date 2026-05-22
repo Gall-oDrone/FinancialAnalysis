@@ -61,8 +61,17 @@ This directory contains Kubernetes manifests for the financial-analysis pipeline
 
 ## ETL CronJobs
 
-- Defined in `base/cronjobs-etl.yaml` (image `financial-analysis-etl`). They start **suspended**; edit `suspend: false` and fix schedules when ready.
+- Defined in `base/cronjobs-etl.yaml` (image `financial-analysis-etl`). They are kept **suspended** in Option B, where Airflow DAGs orchestrate scheduling and dependencies.
 - See `docs/KUBERNETES-DEPLOYMENT-PLAN.md` for rollout sequencing.
+
+## Airflow orchestration (Option B)
+
+- Airflow runs as a Helm release in namespace `airflow`.
+- DAGs are synced from `dags/` and orchestrate pods in `financial-analysis-dev`.
+- Cross-namespace pod execution permissions are defined in `base/airflow-rbac.yaml`.
+- Daily DAG: `dags/financial_analysis_daily.py`:
+  - `scrape_news -> transform_news`
+  - `scrape_stocks -> transform_stocks`
 
 ## Adding more workloads
 
