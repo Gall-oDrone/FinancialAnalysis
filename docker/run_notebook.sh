@@ -12,7 +12,7 @@ docker-compose run --rm \
   scraper bash -c "
     cd /app && 
     pip install papermill -q && 
-    PYTHONPATH=/app/WebScraping/src:/app/Storage:/app:\$PYTHONPATH \
+    PYTHONPATH=/app/Storage:/app/WebScraping/src/selectors:\$PYTHONPATH \
     papermill \
       /app/WebScraping/notebooks/NewsCollector-Staging.ipynb \
       /app/data/NewsCollector-Staging-executed.ipynb \
