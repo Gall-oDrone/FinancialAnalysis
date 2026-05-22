@@ -1,5 +1,7 @@
 # Running Jupyter Notebook in Docker Container
 
+> **Canonical guide:** [docs/jupyter-docker.md](docs/jupyter-docker.md) (use `docker/start_jupyter.sh` when possible).
+
 ## Quick Start
 
 ### Option 1: Using the helper script (Recommended)

@@ -78,6 +78,10 @@ dmypy.json
 logs/
 *.log
 
+# Runtime output (Docker volume mounts; keep directory via .gitkeep)
+data/*
+!data/.gitkeep
+
 # OS
 .DS_Store
 .DS_Store?

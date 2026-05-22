@@ -311,8 +311,8 @@ class ArticleExtractor:
     
     def _generate_id(self) -> int:
         """Generate unique ID for article."""
-        import uuid
-        return uuid.uuid4().int
+        from storage.postgres.id_utils import random_bigint_id
+        return random_bigint_id()
 
 
 class FullArticleExtractor:

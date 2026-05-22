@@ -77,9 +77,8 @@ class Scrapper:
         self.options.add_argument('--ignore-certificate-errors')
 
     def generate_random_id(self):
-        # Generate random id
-        random_id = uuid.uuid4().int
-        return random_id
+        from storage.postgres.id_utils import random_bigint_id
+        return random_bigint_id()
     
     def isAtBottom(self, max_scrolls=1):
         print("Scrolling down...", end='', flush=True)

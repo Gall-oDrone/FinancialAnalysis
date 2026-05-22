@@ -75,24 +75,19 @@ financial_analysis/
    ```
 
 4. **Configure environment variables:**
-   Create a `.env` file in the project root:
-   ```env
-   # PostgreSQL Configuration
-   PGDBNAME=your_database_name
-   PGDBUSER=your_username
-   PGDBPASS=your_password
-   PGDBHOST=localhost
-   PGDBPORT=5432
-
-   # AWS Configuration (optional)
-   AWS_ACCESS_KEY_ID=your_access_key
-   AWS_SECRET_ACCESS_KEY=your_secret_key
-   AWS_DEFAULT_REGION=us-east-1
-
-   # Application Configuration
-   LOG_LEVEL=INFO
-   DEBUG=False
+   ```bash
+   cp env.example .env
    ```
+   Edit `.env` with your database credentials and other settings. See `env.example` for all options (PostgreSQL, AWS, ML/ETL, scraping).
+
+### Docker (PostgreSQL + scraping)
+
+```bash
+docker compose up -d postgres
+docker compose run --rm scraper python /app/docker/notebook_smoke_test.py
+```
+
+For Jupyter in Docker, see [docs/jupyter-docker.md](docs/jupyter-docker.md). Documentation index: [docs/README.md](docs/README.md).
 
 ## Usage
 

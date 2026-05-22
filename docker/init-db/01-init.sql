@@ -1,8 +1,8 @@
 -- =============================================================================
--- Financial Analysis - Database Initialization
+-- Financial Analysis - Database Initialization (single source of truth)
 -- =============================================================================
--- This script runs automatically when the PostgreSQL container starts
--- for the first time.
+-- Runs once when the postgres volume is first created.
+-- Keep in sync with Storage/PostgresSQL_table_queries.py and src/storage/postgres/
 -- =============================================================================
 
 -- Enable required extensions
