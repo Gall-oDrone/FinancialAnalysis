@@ -99,7 +99,8 @@ COPY --chown=appuser:appgroup . .
 # Copy and set up entrypoint script
 COPY --chown=appuser:appgroup docker/entrypoint.sh /entrypoint.sh
 COPY --chown=appuser:appgroup docker/healthcheck.py /healthcheck.py
-RUN chmod +x /entrypoint.sh /healthcheck.py
+RUN sed -i 's/\r$//' /entrypoint.sh \
+    && chmod +x /entrypoint.sh /healthcheck.py
 
 # Install the package
 RUN pip install --no-cache-dir .

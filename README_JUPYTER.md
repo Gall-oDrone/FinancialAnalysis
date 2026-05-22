@@ -6,13 +6,13 @@
 
 **Windows PowerShell:**
 ```powershell
-docker-compose run --rm -p 8888:8888 -v "${PWD}/WebScraping:/app/WebScraping" -v "${PWD}/Storage:/app/Storage" -v "${PWD}/logs:/app/logs" -v "${PWD}/data:/app/data" -e PYTHONPATH=/app/WebScraping/src:/app/Storage:/app scraper bash -c "cd /app && pip install jupyter -q && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.allow_origin='*'"
+docker-compose run --rm -p 8888:8888 -v "${PWD}/WebScraping:/app/WebScraping" -v "${PWD}/Storage:/app/Storage" -v "${PWD}/logs:/app/logs" -v "${PWD}/data:/app/data" -e PYTHONPATH=/app/Storage scraper bash -c "cd /app && pip install jupyter -q && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.allow_origin='*'"
 ```
 
 **With Token Authentication (More Secure):**
 ```powershell
 $token = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object {[char]$_})
-docker-compose run --rm -p 8888:8888 -v "${PWD}/WebScraping:/app/WebScraping" -v "${PWD}/Storage:/app/Storage" -v "${PWD}/logs:/app/logs" -v "${PWD}/data:/app/data" -e PYTHONPATH=/app/WebScraping/src:/app/Storage:/app scraper bash -c "cd /app && pip install jupyter -q && echo 'Access Jupyter at: http://localhost:8888/?token=$token' && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='$token'"
+docker-compose run --rm -p 8888:8888 -v "${PWD}/WebScraping:/app/WebScraping" -v "${PWD}/Storage:/app/Storage" -v "${PWD}/logs:/app/logs" -v "${PWD}/data:/app/data" -e PYTHONPATH=/app/Storage scraper bash -c "cd /app && pip install jupyter -q && echo 'Access Jupyter at: http://localhost:8888/?token=$token' && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='$token'"
 ```
 
 ### Option 2: Manual Command
@@ -25,7 +25,7 @@ docker-compose run --rm `
   -v "${PWD}/Storage:/app/Storage" `
   -v "${PWD}/logs:/app/logs" `
   -v "${PWD}/data:/app/data" `
-  -e PYTHONPATH=/app/WebScraping/src:/app/Storage:/app `
+  -e PYTHONPATH=/app/Storage `
   scraper bash -c "cd /app && pip install jupyter -q && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.allow_origin='*'"
 ```
 

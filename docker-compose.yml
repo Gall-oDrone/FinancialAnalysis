@@ -91,10 +91,9 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
-      # Mount source code for development (optional, remove in production)
-      # - ./WebScraping:/app/WebScraping:ro
-      # - ./Storage:/app/Storage:ro
-      # - ./config:/app/config:ro
+      - ./WebScraping:/app/WebScraping:ro
+      - ./Storage:/app/Storage:ro
+      - ./config:/app/config:ro
     networks:
       - financial_network
     depends_on:

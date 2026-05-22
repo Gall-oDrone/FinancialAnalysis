@@ -31,7 +31,7 @@ HISTORICAL_FINANCIAL_NEWS_TABLE_QUERY = """
         """
 HISTORICAL_FINANCIAL_NEWS_TABLE_QUERY_241118 = """
             CREATE TABLE IF NOT EXISTS financial_news_241118 (
-                id VARCHAR(255),
+                id BIGINT PRIMARY KEY,
                 source VARCHAR(255),
                 headline TEXT,
                 href TEXT,
