@@ -55,7 +55,7 @@ htmlcov/
 logs/
 *.log
 
-# Local environment files (use .env.example instead)
+# Local environment files (use env.example instead)
 .env
 .env.local
 .env.*.local

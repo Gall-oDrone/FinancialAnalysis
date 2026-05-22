@@ -56,7 +56,7 @@ Create a `.env` file or set environment variables:
 
 ```bash
 # Copy example file
-cp .env.example .env
+cp env.example .env
 
 # Edit with your production values
 nano .env

@@ -253,7 +253,7 @@ financial_analysis/
 │   ├── __init__.py
 │   └── logging.py
 ├── WebScraping/                   # Web scraping modules
-├── .env.example                   # Environment variables template
+├── env.example                    # Environment variables template
 ├── .gitignore                     # Git ignore patterns
 ├── .pre-commit-config.yaml        # Pre-commit hooks
 ├── CHANGELOG.md                   # Version history

@@ -4,7 +4,7 @@
 echo "Running NewsCollector-Staging.ipynb in Docker container..."
 echo "=========================================="
 
-docker-compose run --rm \
+docker compose run --rm \
   -v "${PWD}/WebScraping:/app/WebScraping:ro" \
   -v "${PWD}/Storage:/app/Storage:ro" \
   -v "${PWD}/logs:/app/logs" \

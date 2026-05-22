@@ -13,17 +13,25 @@ A production-ready Python toolkit for financial data collection, processing, and
 ## Project Structure
 
 ```
-financial_analysis/
-├── BitsoApi/           # Bitso cryptocurrency exchange API integration
-├── DataProcessing/     # Data ingestion and transformation modules
-├── FinancialAnalysis/  # Financial modeling and analysis libraries
-├── Storage/            # Database and cloud storage modules
-├── WebScraping/        # Web scraping utilities for financial data
-├── tests/              # Unit and integration tests
-├── config/             # Configuration files
-├── logs/               # Application logs
-├── pyproject.toml      # Project configuration and dependencies
-└── README.md           # This file
+FinancialAnalysis/
+├── BitsoApi/              # Bitso cryptocurrency exchange API integration
+├── DataProcessing/        # Data ingestion and transformation modules
+├── FinancialAnalysis/     # Financial modeling and analysis libraries
+├── Storage/               # Database and cloud storage modules
+├── WebScraping/           # Web scraping utilities and notebooks
+├── notebooks/             # ETL and ingestion notebooks
+├── docker/                # Container scripts, DB init SQL, Jupyter helpers
+├── docs/                  # Guides (e.g. Jupyter in Docker)
+├── tests/                 # Unit and integration tests
+├── config/                # Application settings
+├── scripts/               # Maintenance CLI scripts
+├── data/                  # Runtime outputs (gitignored except .gitkeep)
+├── logs/                  # Application logs (gitignored)
+├── Dockerfile             # Scraper image (Python + Chromium)
+├── docker-compose.yml     # Postgres, pgAdmin, scraper services
+├── env.example            # Environment template → copy to .env
+├── pyproject.toml         # Project configuration and dependencies
+└── README.md              # This file
 ```
 
 ## Installation
@@ -56,24 +64,19 @@ financial_analysis/
    ```
 
 4. **Configure environment variables:**
-   Create a `.env` file in the project root:
-   ```env
-   # PostgreSQL Configuration
-   PGDBNAME=your_database_name
-   PGDBUSER=your_username
-   PGDBPASS=your_password
-   PGDBHOST=localhost
-   PGDBPORT=5432
-
-   # AWS Configuration (optional)
-   AWS_ACCESS_KEY_ID=your_access_key
-   AWS_SECRET_ACCESS_KEY=your_secret_key
-   AWS_DEFAULT_REGION=us-east-1
-
-   # Application Configuration
-   LOG_LEVEL=INFO
-   DEBUG=False
+   ```bash
+   cp env.example .env
    ```
+   Edit `.env` with your database credentials and other settings. See `env.example` for all options.
+
+### Docker (PostgreSQL + scraping)
+
+```bash
+docker compose up -d postgres
+docker compose run --rm scraper python /app/docker/test_scraper.py
+```
+
+For Jupyter in Docker, see [docs/jupyter-docker.md](docs/jupyter-docker.md).
 
 ## Usage
 

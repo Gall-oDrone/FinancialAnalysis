@@ -238,7 +238,7 @@ financial_analysis/
 ├── tests/                  # Test suite ✨ NEW
 ├── utils/                  # Utility modules ✨ NEW
 ├── WebScraping/            # Web scraping modules
-├── .env.example            # Environment variables template ✨ NEW
+├── env.example             # Environment variables template
 ├── .gitignore              # Updated with comprehensive patterns
 ├── .pre-commit-config.yaml # Pre-commit hooks ✨ NEW
 ├── CHANGELOG.md            # Version history ✨ NEW
