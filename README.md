@@ -15,6 +15,12 @@ A production-ready Python toolkit for financial data collection, processing, and
 - **Financial Analysis**: Advanced financial modeling and analysis libraries
 - **CLI Tools**: Command-line interface for ETL operations
 
+## Architecture Documentation
+
+- [`docs/application-integration-workload.md`](docs/application-integration-workload.md): EKS workload integration, deployment sequencing, NeMo roadmap
+- [`eks/infrastructure/terraform/EKS-MIGRATION-PLAN.md`](eks/infrastructure/terraform/EKS-MIGRATION-PLAN.md): Terraform layout (`envs/` vs legacy `environments/`)
+- [`eks/infrastructure/README.md`](eks/infrastructure/README.md): IaC quick start and deploy scripts
+
 ## Project Structure (production layout)
 
 ```
@@ -40,6 +46,8 @@ financial_analysis/
 ├── BitsoApi/               # Bitso API integration (standalone)
 ├── FinancialAnalysis/     # Financial modeling libraries (standalone)
 ├── scripts/                # Operational scripts
+├── eks/infrastructure/     # EKS Terraform, CloudFormation, deploy scripts
+├── k8s/                    # Kustomize app manifests and overlays
 ├── docs/                   # Documentation
 ├── pyproject.toml
 └── README.md
@@ -88,6 +96,16 @@ docker compose run --rm scraper python /app/docker/notebook_smoke_test.py
 ```
 
 For Jupyter in Docker, see [docs/jupyter-docker.md](docs/jupyter-docker.md). Documentation index: [docs/README.md](docs/README.md).
+
+### AWS / EKS deployment
+
+Provision a development cluster and supporting AWS resources:
+
+```bash
+bash eks/infrastructure/terraform/scripts/deploy/deploy-development-eks.sh
+```
+
+See [eks/infrastructure/README.md](eks/infrastructure/README.md) for CloudFormation IDE stacks, environment overlays, and cleanup scripts. Deploy application workloads with [k8s/README.md](k8s/README.md).
 
 ## Usage
 

@@ -32,92 +32,7 @@ locals {
   )
 }
 
-# -----------------------------------------------------------------------------
-# IAM Role for AWS Load Balancer Controller
-# -----------------------------------------------------------------------------
-resource "aws_iam_role" "alb_controller" {
-  name = "${var.project_name}-${var.environment}-alb-controller-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Federated = var.oidc_provider_arn
-        }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "${var.oidc_provider_url}:aud" = "sts.amazonaws.com"
-            "${var.oidc_provider_url}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = local.tags
-}
-
-resource "aws_iam_role_policy" "alb_controller" {
-  name = "alb-controller-policy"
-  role = aws_iam_role.alb_controller.id
-
-  policy = file("${path.module}/policies/alb-controller-policy.json")
-}
-
-# -----------------------------------------------------------------------------
-# IAM Role for External DNS
-# -----------------------------------------------------------------------------
-resource "aws_iam_role" "external_dns" {
-  name = "${var.project_name}-${var.environment}-external-dns-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Federated = var.oidc_provider_arn
-        }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "${var.oidc_provider_url}:aud" = "sts.amazonaws.com"
-            "${var.oidc_provider_url}:sub" = "system:serviceaccount:kube-system:external-dns"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = local.tags
-}
-
-resource "aws_iam_role_policy" "external_dns" {
-  name = "external-dns-policy"
-  role = aws_iam_role.external_dns.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = "route53:ChangeResourceRecordSets"
-        Resource = "arn:aws:route53:::hostedzone/*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
+# ALB / ExternalDNS / cert-manager / external-secrets IRSA: ../../modules/iam (module.iam_irsa)
 
 # -----------------------------------------------------------------------------
 # IAM Role for Cluster Autoscaler
@@ -296,6 +211,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
     id     = "expire-old-versions"
     status = "Enabled"
 
+    filter {}
+
     noncurrent_version_expiration {
       noncurrent_days = 90
     }
@@ -304,6 +221,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+
+    filter {}
 
     transition {
       days          = 30

@@ -62,6 +62,12 @@ variable "db_username" {
   default     = "financial_user"
 }
 
+variable "engine_version" {
+  description = "PostgreSQL engine version (must exist in the target AWS region)"
+  type        = string
+  default     = "16.13"
+}
+
 variable "multi_az" {
   description = "Enable Multi-AZ deployment"
   type        = bool
