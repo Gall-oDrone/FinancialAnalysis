@@ -242,23 +242,19 @@ class PgConn:
     def get_financial_news(self):
         cursor = self.connection.cursor()
         try:
-            
-            # Specify the column names for uniqueness
-            unique_columns = ["headline", "summary"]
+            if self.connection is None or self.is_connection_closed():
+                print("Error: Database connection is not open.")
+                return None
 
-            # Construct the SQL query to select distinct rows based on unique columns
-            column_names_str = ', '.join(unique_columns)
-            query = f"SELECT DISTINCT ON ({column_names_str}) * FROM {self.tablename};"
+            query = sql.SQL(
+                "SELECT DISTINCT ON (headline, summary) * FROM {} "
+                "ORDER BY headline, summary, datetime DESC"
+            ).format(sql.Identifier(self.tablename))
 
-            # Execute the query
             cursor.execute(query)
-
-            # Fetch all records
             data = cursor.fetchall()
-
-            columns = ["id", "source", "headline", "href", "summary", "content", "author", "minsread","datetime"]
-            df = pd.DataFrame(data, columns=columns)
-            return df
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            return pd.DataFrame(data, columns=columns)
 
         except Exception as e:
             print(f"Error: Unable to retrieve data from the database. Error is: {e}")
