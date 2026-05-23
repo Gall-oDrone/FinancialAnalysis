@@ -17,9 +17,11 @@ cp env.example .env   # edit passwords if needed
 docker compose run --rm -p 8888:8888 `
   -v "${PWD}/WebScraping:/app/WebScraping" `
   -v "${PWD}/Storage:/app/Storage" `
+  -v "${PWD}/src:/app/src" `
+  -v "${PWD}/notebooks:/app/notebooks" `
   -v "${PWD}/logs:/app/logs" `
   -v "${PWD}/data:/app/data" `
-  -e PYTHONPATH=/app/Storage `
+  -e PYTHONPATH=/app/src:/app/Storage `
   scraper bash -c "cd /app && pip install jupyter -q && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --notebook-dir=/app --ServerApp.token='' --ServerApp.password='' --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True"
 ```
 
