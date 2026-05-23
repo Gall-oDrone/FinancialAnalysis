@@ -20,7 +20,7 @@ docker-compose run --rm \
   -v "${PWD}/notebooks:/app/notebooks" \
   -v "${PWD}/logs:/app/logs" \
   -v "${PWD}/data:/app/data" \
-  -e PYTHONPATH=/app/src:/app/WebScraping/src:/app/Storage:/app \
+  -e PYTHONPATH=/app/src:/app/Storage:/app \
   scraper bash -c "
     cd /app && 
     pip install jupyter -q && 
