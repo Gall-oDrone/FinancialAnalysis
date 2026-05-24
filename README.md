@@ -92,10 +92,23 @@ financial_analysis/
 
 ```bash
 docker compose up -d postgres
+cp env.example .env   # set PGDBPASS / POSTGRES_PASSWORD
 docker compose run --rm scraper python /app/docker/notebook_smoke_test.py
 ```
 
-For Jupyter in Docker, see [docs/jupyter-docker.md](docs/jupyter-docker.md). Documentation index: [docs/README.md](docs/README.md).
+**Jupyter in Docker (recommended for notebooks):**
+
+```powershell
+# Windows
+docker compose up -d postgres
+.\docker\start_jupyter.ps1
+# http://localhost:8888/tree
+```
+
+After code changes to imported modules (`Storage/pgConn.py`, `src/`), use **Kernel → Restart** in the notebook; you usually do not need to rebuild the image. Restart Jupyter only when `.env` changes or after `docker compose build scraper`.
+
+Full workflow, restart steps, Selenium, and database setup: [docs/jupyter-docker.md](docs/jupyter-docker.md).  
+Documentation index: [docs/README.md](docs/README.md).
 
 ### AWS / EKS deployment
 
@@ -136,15 +149,9 @@ scraper.initDB(
 from Storage import PgConn
 from Storage import PostgresSQL_table_queries
 
-# Initialize PostgreSQL connection
-pg_conn = PgConn(
-    tablename="stocks",
-    dbname="financial_db",
-    user="db_user"
-)
-
-# Initialize database table
-pg_conn.init_db(PostgresSQL_table_queries.STOCKS_TABLE_QUERY)
+# Uses PGDBHOST, PGDBNAME, PGDBUSER, PGDBPASS from .env
+pg_conn = PgConn(tablename=PostgresSQL_table_queries.HISTORICAL_CRYPTO_STOCKS_TABLE_NAME)
+pg_conn.init_db(PostgresSQL_table_queries.HISTORICAL_CRYPTO_STOCKS_TABLE_QUERY)
 
 # Save data
 pg_conn.save_to_postgres(row_data, headers)

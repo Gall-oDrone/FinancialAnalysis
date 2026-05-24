@@ -52,3 +52,17 @@ from DataframeStore import DataFrameStore
 - **Documentation**: Analysis and reference docs are in `docs/`
 - **Generated files**: Output files like HTML dumps go in `data/`
 
+## Running notebooks in Docker
+
+From the repo root:
+
+```powershell
+docker compose up -d postgres
+.\docker\start_jupyter.ps1
+```
+
+- **StockCollector:** http://localhost:8888/notebooks/WebScraping/notebooks/StockCollector.ipynb
+- **NewsCollector-Staging:** http://localhost:8888/notebooks/WebScraping/notebooks/NewsCollector-Staging.ipynb
+
+Use **Kernel → Restart** after editing `Storage/pgConn.py` or other imported modules. In Docker, Selenium should use system `/usr/bin/chromedriver` and `/usr/bin/chromium` (see [docs/jupyter-docker.md](../docs/jupyter-docker.md)). Database connections should use `PgConn()` with `PGDB*` from `.env`, not hardcoded `cryptostocks`/`postgres` unless that database exists on your host.
+

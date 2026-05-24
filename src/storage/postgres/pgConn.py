@@ -67,8 +67,19 @@ class PgConn:
             self.open_connection()
         else:
             print("Connection is already open.")
+
+    def ensure_connection(self):
+        if self.is_connection_closed():
+            self.open_connection()
+        if self.connection is None:
+            raise ConnectionError(
+                f"Unable to connect to PostgreSQL at {self.host}:{self.port}/{self.dbname} as {self.user}. "
+                "Check PGDBHOST, PGDBNAME, PGDBUSER, and PGDBPASS in your .env file."
+            )
             
     def create_table(self, table_query):
+        self.ensure_connection()
+        cursor = None
         try:
             cursor = self.connection.cursor()
             # Define your table schema here
@@ -96,9 +107,11 @@ class PgConn:
         except Exception as e:
             print(f"Error: Unable to create the table. {e}")
         finally:
-            cursor.close()
+            if cursor is not None:
+                cursor.close()
 
     def delete_table(self):
+        self.ensure_connection()
         cursor = self.connection.cursor()
 
         try:
@@ -113,6 +126,7 @@ class PgConn:
             cursor.close()
 
     def delete_all_rows(self):
+        self.ensure_connection()
         cursor = self.connection.cursor()
 
         try:
@@ -127,6 +141,7 @@ class PgConn:
             cursor.close()
 
     def save_to_postgres(self, row_data, header):
+        self.ensure_connection()
         print("Saving to postgres db...", end='', flush=True)
         cursor = self.connection.cursor()
         if not isinstance(row_data, dict):
@@ -353,10 +368,7 @@ class PgConn:
             cursor.close()
             
     def init_db(self, table_query):
-        if not self.connection:
-            return
-
-        # Create the table (if not exists)
+        self.ensure_connection()
         self.create_table(table_query)
         return self.connection
 
