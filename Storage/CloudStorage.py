@@ -1,17 +1,52 @@
 import os
+from pathlib import Path
+
 import boto3
 import pandas as pd
+from dotenv import load_dotenv
 from io import StringIO
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError
 import json
 from datetime import datetime
+
+
+def _load_aws_env() -> None:
+    for path in (Path("/app/.env"), Path.cwd() / ".env", Path(__file__).resolve().parents[2] / ".env"):
+        if path.is_file():
+            load_dotenv(path, override=False)
+
+
+def _boto3_session():
+    _load_aws_env()
+    region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+    key = os.getenv("AWS_ACCESS_KEY_ID")
+    secret = os.getenv("AWS_SECRET_ACCESS_KEY")
+    if key and secret:
+        return boto3.Session(
+            aws_access_key_id=key,
+            aws_secret_access_key=secret,
+            region_name=region,
+        )
+    return boto3.Session(region_name=region)
+
+
+def _ensure_aws_credentials() -> None:
+    _load_aws_env()
+    if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
+        return
+    raise NoCredentialsError(
+        provider="env",
+    )
+
 
 class CloudStorageProvider:
     
     class AWS:
         def __init__(self):
-            self.s3_client = boto3.client('s3')
-            self.s3_resource = boto3.resource('s3')
+            _ensure_aws_credentials()
+            session = _boto3_session()
+            self.s3_client = session.client("s3")
+            self.s3_resource = session.resource("s3")
     
         def create_bucket(self, bucket_name):
             try:

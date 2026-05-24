@@ -4,14 +4,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ENV_FILE="${REPO_ROOT}/.env"
 
 echo "Starting Jupyter Notebook server..."
 echo "=========================================="
 echo "Repo: ${REPO_ROOT}"
 echo "Jupyter: http://localhost:8888/tree"
 echo "Notebook: http://localhost:8888/notebooks/notebooks/ingestion/DataIngestion-Text.ipynb"
+if [[ -f "${ENV_FILE}" ]]; then
+  echo "Env file: ${ENV_FILE}"
+else
+  echo "Warning: .env not found — copy env.example to .env and set AWS/Postgres vars."
+fi
 echo "Press Ctrl+C to stop."
 echo "=========================================="
+
+ENV_ARGS=()
+if [[ -f "${ENV_FILE}" ]]; then
+  ENV_ARGS=(--env-file "${ENV_FILE}" -v "${ENV_FILE}:/app/.env:ro")
+fi
 
 docker compose run --rm \
   -p 8888:8888 \
@@ -22,6 +33,7 @@ docker compose run --rm \
   -v "${REPO_ROOT}/logs:/app/logs" \
   -v "${REPO_ROOT}/data:/app/data" \
   -e PYTHONPATH=/app/src:/app/Storage:/app \
+  "${ENV_ARGS[@]}" \
   scraper bash -c "
     cd /app &&
     pip install jupyter -q &&
