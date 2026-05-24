@@ -34,7 +34,9 @@ Or use the helper script:
 ## Open the notebook
 
 - File browser: http://localhost:8888/tree
-- News collector: http://localhost:8888/notebooks/WebScraping/notebooks/NewsCollector-Staging.ipynb
+- Data ingestion: http://localhost:8888/notebooks/notebooks/ingestion/DataIngestion-Text.ipynb
+
+If you still see old code (`etl_process.filter_by_current_date()`), close the tab, reopen the link above, then **Kernel → Restart** and run cells 1, 2, and 7.
 
 Inside the container, `PGDBHOST=postgres`. On the host, use `PGDBHOST=localhost` in `.env` if you connect from outside Docker.
 
