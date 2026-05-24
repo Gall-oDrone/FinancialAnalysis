@@ -11,25 +11,19 @@ cp env.example .env   # edit passwords if needed
 
 ## Start Jupyter
 
-**Windows PowerShell:**
+**Windows PowerShell (recommended):**
 
 ```powershell
-docker compose run --rm -p 8888:8888 `
-  -v "${PWD}/WebScraping:/app/WebScraping" `
-  -v "${PWD}/Storage:/app/Storage" `
-  -v "${PWD}/src:/app/src" `
-  -v "${PWD}/notebooks:/app/notebooks" `
-  -v "${PWD}/logs:/app/logs" `
-  -v "${PWD}/data:/app/data" `
-  -e PYTHONPATH=/app/src:/app/Storage `
-  scraper bash -c "cd /app && pip install jupyter -q && jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --notebook-dir=/app --ServerApp.token='' --ServerApp.password='' --ServerApp.allow_origin='*' --ServerApp.disable_check_xsrf=True"
+./docker/start_jupyter.ps1
 ```
 
-Or use the helper script:
+**Git Bash / Linux / macOS:**
 
-```powershell
+```bash
 ./docker/start_jupyter.sh
 ```
+
+These scripts mount `src/` and `notebooks/` from your repo. Without those mounts, Docker serves an **old notebook copy** baked into the image (you will see the `.str.startswith` / `datetime64` error again).
 
 ## Open the notebook
 
@@ -42,7 +36,8 @@ Inside the container, `PGDBHOST=postgres`. On the host, use `PGDBHOST=localhost`
 
 ## Notes
 
-- `PYTHONPATH=/app/Storage` is enough at startup; the notebook adds `WebScraping/src/selectors` without putting `WebScraping/src` on the path (avoids shadowing stdlib `selectors`).
+- Use `./docker/start_jupyter.ps1` (Windows) or `./docker/start_jupyter.sh` so `src/` and `notebooks/` are bind-mounted.
+- `PYTHONPATH=/app/src:/app/Storage:/app` — do **not** add `WebScraping/src` (shadows stdlib `selectors`).
 - Scraper image includes Chromium and chromedriver; no separate ChromeDriver service.
 - Press `Ctrl+C` in the terminal to stop Jupyter.
 
