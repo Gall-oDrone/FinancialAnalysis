@@ -26,3 +26,15 @@ class TestBuildS3DatetimePartitionPrefix:
             second=0,
         )
         assert prefix == "news/crypto/year=2026/month=05/day=24/hour=04/minute=50/second=00/"
+
+    def test_stocks_book_and_day_prefix(self):
+        prefix = build_s3_datetime_partition_prefix(
+            "stocks/crypto/",
+            book="ADA-USD",
+            year="2026",
+            month="05",
+            day="24",
+            hour="",
+            minute=None,
+        )
+        assert prefix == "stocks/crypto/book=ada-usd/year=2026/month=05/day=24/"

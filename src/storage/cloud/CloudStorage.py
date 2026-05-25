@@ -33,6 +33,7 @@ def _format_partition_component(part_name: str, value) -> str:
 def build_s3_datetime_partition_prefix(
     prefix: str,
     *,
+    book=None,
     year=None,
     month=None,
     day=None,
@@ -40,9 +41,11 @@ def build_s3_datetime_partition_prefix(
     minute=None,
     second=None,
 ) -> str:
-    """Build S3 prefix matching upload layout (year=/month=/day=/hour=/minute=/second=/)."""
+    """Build S3 prefix matching upload layout (book=/year=/month=/day=/hour=/minute=/second=/)."""
     base = prefix if prefix.endswith("/") else f"{prefix}/"
     segments = []
+    if _partition_value_provided(book):
+        segments.append(f"book={str(book).strip().lower()}")
     for part_name, val in (
         ("year", year),
         ("month", month),
@@ -162,10 +165,12 @@ class CloudStorageProvider:
             hour=None,
             minute=None,
             second=None,
+            book=None,
         ):
             try:
                 folder_path = build_s3_datetime_partition_prefix(
                     prefix,
+                    book=book,
                     year=year,
                     month=month,
                     day=day,

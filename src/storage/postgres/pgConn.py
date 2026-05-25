@@ -236,6 +236,22 @@ class PgConn:
             return base + sql.SQL(" ON CONFLICT (book, date) DO NOTHING")
         return base + sql.SQL(" ON CONFLICT DO NOTHING")
 
+    def _dataframe_from_cursor(self, cursor, data) -> pd.DataFrame:
+        """Build a DataFrame when row width and cursor metadata disagree."""
+        if not data:
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            return pd.DataFrame(columns=columns)
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        row_len = len(data[0])
+        if len(columns) < row_len:
+            columns = list(columns) + [f"_extra_{i}" for i in range(len(columns), row_len)]
+        elif len(columns) > row_len:
+            columns = columns[:row_len]
+        df = pd.DataFrame(data, columns=columns)
+        if "reference" in df.columns and "ref" not in df.columns:
+            df = df.rename(columns={"reference": "ref"})
+        return df
+
     def get_stocks_prices(self, book_names=[]):
         cursor = self.connection.cursor()
         try:
@@ -249,13 +265,7 @@ class PgConn:
 
             cursor.execute(query)
             data = cursor.fetchall()
-
-            columns = [desc[0] for desc in cursor.description] if cursor.description else []
-            df = pd.DataFrame(data, columns=columns)
-            if "reference" in df.columns and "ref" not in df.columns:
-                df = df.rename(columns={"reference": "ref"})
-
-            return df
+            return self._dataframe_from_cursor(cursor, data)
         except Exception as e:
             print(f"Error: Unable to retrieve data from the database. {e}")
             return None
@@ -276,8 +286,7 @@ class PgConn:
 
             cursor.execute(query)
             data = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description] if cursor.description else []
-            return pd.DataFrame(data, columns=columns)
+            return self._dataframe_from_cursor(cursor, data)
 
         except Exception as e:
             print(f"Error: Unable to retrieve data from the database. Error is: {e}")
