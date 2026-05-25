@@ -244,8 +244,10 @@ class PgConn:
             cursor.execute(query)
             data = cursor.fetchall()
 
-            columns = ["ref", "book", "date", "open", "high", "low", "close", "adj_close", "volume"]
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
             df = pd.DataFrame(data, columns=columns)
+            if "reference" in df.columns and "ref" not in df.columns:
+                df = df.rename(columns={"reference": "ref"})
 
             return df
         except Exception as e:
