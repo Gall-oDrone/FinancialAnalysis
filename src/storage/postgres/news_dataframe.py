@@ -2,12 +2,62 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Optional, Union
+from datetime import date, datetime, timezone
+from typing import Any, Optional, Union
 
 import pandas as pd
 
 DateLike = Union[date, datetime, str, None]
+
+
+def normalize_datetime_to_iso_z(value: Any) -> Optional[str]:
+    """Serialize a datetime value to ``YYYY-MM-DDTHH:MM:SS.sssZ`` (UTC).
+
+    Matches legacy financial news storage (e.g. ``2026-05-02T06:52:14.000Z``).
+    Accepts ISO strings, locale strings (``5/23/2026  8:32:15 AM``), and datetime objects.
+    """
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+    else:
+        text = value
+
+    dt = pd.to_datetime(text, utc=True, errors="coerce")
+    if pd.isna(dt):
+        return None
+
+    if hasattr(dt, "to_pydatetime"):
+        dt = dt.to_pydatetime()
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+
+    ms = dt.microsecond // 1000
+    return f"{dt.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
+
+
+def normalize_financial_news_datetime_column(
+    df: pd.DataFrame,
+    column: str = "datetime",
+) -> pd.DataFrame:
+    """Return a copy with ``column`` normalized to ISO-8601 UTC strings."""
+    if df is None or column not in df.columns:
+        return df.copy() if df is not None else pd.DataFrame()
+
+    out = df.copy()
+    out[column] = out[column].apply(normalize_datetime_to_iso_z)
+    return out
 
 
 def filter_financial_news_by_date(
@@ -20,6 +70,7 @@ def filter_financial_news_by_date(
     """Return rows whose ``date_column`` falls on the given calendar day.
 
     Works whether the column is stored as strings (e.g. ISO-8601) or ``datetime64``.
+    Equivalent to filtering with ``datetime.str.startswith('YYYY-MM-DD')`` on ISO values.
 
     For ingestion/export of rows scraped today, pass ``date_column="created_at"``.
     For rows whose *article* was published on a day, use ``date_column="datetime"`` (default).
@@ -38,7 +89,7 @@ def filter_financial_news_by_date(
         )
 
     target = _coerce_to_date(on_date or datetime.today())
-    parsed = pd.to_datetime(df[date_column], errors="coerce")
+    parsed = pd.to_datetime(df[date_column], errors="coerce", utc=True)
     mask = parsed.dt.date == target
     return df.loc[mask].copy()
 

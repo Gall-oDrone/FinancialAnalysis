@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError, NoCredentialsError
 import json
 from datetime import datetime
 
+from storage.postgres.news_dataframe import normalize_financial_news_datetime_column
+
 
 def _load_aws_env() -> None:
     """Load AWS (and other) vars from repo .env in Docker or local runs."""
@@ -214,6 +216,7 @@ class CloudStorageProvider:
             print(f"Task finished: all files were succesfully uploaded to S3 bucket {bucket_name}")
             
         def upload_dataframe_with_datetime_subfolders(self, dataframe, bucket_name, prefix_path, file_format):
+            dataframe = normalize_financial_news_datetime_column(dataframe)
             # Iterate through each row of the DataFrame
             for index, row in dataframe.iterrows():
                 # Extract datetime from the 'datetime' column

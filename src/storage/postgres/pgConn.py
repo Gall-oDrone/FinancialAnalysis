@@ -2,7 +2,9 @@ import os
 import psycopg2
 import pandas as pd
 from psycopg2 import sql, Error
-from dotenv import load_dotenv, dotenv_values 
+from dotenv import load_dotenv, dotenv_values
+
+from storage.postgres.news_dataframe import normalize_datetime_to_iso_z 
 
 # loading variables from .env file
 load_dotenv() 
@@ -148,6 +150,10 @@ class PgConn:
             row_dict = dict(zip(header, row_data))
         else:
             row_dict = row_data
+        if "datetime" in row_dict:
+            normalized = normalize_datetime_to_iso_z(row_dict["datetime"])
+            if normalized is not None:
+                row_dict["datetime"] = normalized
         # For news rows, proactively skip duplicates even if no DB unique constraint exists.
         if self.is_duplicate_news_row(row_dict):
             article_ref = self.get_news_identifier(row_dict)
