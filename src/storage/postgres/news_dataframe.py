@@ -119,6 +119,26 @@ def filter_financial_news_ingested_today(
     return filter_financial_news_by_date(df, on_date, date_column="created_at")
 
 
+def get_financial_news_content_by_id(
+    df: pd.DataFrame,
+    article_id: Union[str, int],
+    *,
+    id_column: str = "id",
+    content_column: str = "content",
+) -> list:
+    """Return article body text for ``article_id`` (compares ids as strings)."""
+    if df is None or df.empty:
+        return []
+    if id_column not in df.columns or content_column not in df.columns:
+        raise KeyError(
+            f"Expected columns {id_column!r} and {content_column!r}; got {list(df.columns)}"
+        )
+    target = str(article_id).strip()
+    mask = df[id_column].astype(str).str.strip() == target
+    series = df.loc[mask, content_column].dropna()
+    return series.tolist()
+
+
 def _default_target_date(on_date: DateLike) -> date:
     """Current local calendar day when ``on_date`` is omitted."""
     if on_date is not None:

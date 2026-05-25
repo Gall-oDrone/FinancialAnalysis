@@ -7,6 +7,7 @@ import pytest
 
 from storage.postgres.news_dataframe import (
     filter_financial_news_by_date,
+    get_financial_news_content_by_id,
     normalize_datetime_to_iso_z,
     normalize_financial_news_datetime_column,
 )
@@ -86,6 +87,25 @@ class TestFilterFinancialNewsByDate:
         by_startswith = df[df["datetime"].str.startswith(prefix)]
         by_helper = filter_financial_news_by_date(df, on_date="2026-04-07")
         pd.testing.assert_frame_equal(by_startswith.reset_index(drop=True), by_helper.reset_index(drop=True))
+
+
+class TestGetFinancialNewsContentById:
+    def test_finds_content_with_string_target_and_int_id(self):
+        df = pd.DataFrame(
+            {
+                "id": [1221589746717124508, 999],
+                "content": ["Article body", "Other"],
+            }
+        )
+        assert get_financial_news_content_by_id(df, "1221589746717124508") == ["Article body"]
+
+    def test_finds_content_from_string_ids(self):
+        df = pd.DataFrame({"id": ["1221589746717124508"], "content": ["From S3 csv"]})
+        assert get_financial_news_content_by_id(df, 1221589746717124508) == ["From S3 csv"]
+
+    def test_missing_id_returns_empty_list(self):
+        df = pd.DataFrame({"id": ["1"], "content": ["x"]})
+        assert get_financial_news_content_by_id(df, "missing") == []
 
 
 class TestNormalizeFinancialNewsDatetimeColumn:
