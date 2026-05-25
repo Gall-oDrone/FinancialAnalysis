@@ -69,11 +69,10 @@ def filter_financial_news_by_date(
 ) -> pd.DataFrame:
     """Return rows whose ``date_column`` falls on the given calendar day.
 
-    Works whether the column is stored as strings (e.g. ISO-8601) or ``datetime64``.
-    Equivalent to filtering with ``datetime.str.startswith('YYYY-MM-DD')`` on ISO values.
-
-    For ingestion/export of rows scraped today, pass ``date_column="created_at"``.
-    For rows whose *article* was published on a day, use ``date_column="datetime"`` (default).
+    * ``on_date=None`` (default): uses **today's local calendar date** (``date.today()``).
+    * ``date_column="datetime"`` (default): article publish time; matches webscraping
+      ``df['datetime'].str.startswith('YYYY-MM-DD')`` plus parsed-date fallback.
+    * ``date_column="created_at"``: use ``filter_financial_news_ingested_today`` instead.
     """
     if datetime_column is not None:
         date_column = datetime_column
@@ -88,10 +87,28 @@ def filter_financial_news_by_date(
             "Use date_column='created_at' for ingestion date or 'datetime' for article date."
         )
 
-    target = _coerce_to_date(on_date or datetime.today())
-    parsed = pd.to_datetime(df[date_column], errors="coerce", utc=True)
-    mask = parsed.dt.date == target
+    target = _default_target_date(on_date)
+    prefix = target.strftime("%Y-%m-%d")
+
+    if date_column == "datetime":
+        str_col = df[date_column].astype(str)
+        mask = str_col.str.startswith(prefix, na=False)
+        parsed = pd.to_datetime(df[date_column], errors="coerce")
+        if parsed.notna().any():
+            mask = mask | (parsed.dt.date == target)
+    else:
+        parsed = pd.to_datetime(df[date_column], errors="coerce")
+        mask = parsed.dt.date == target
+
     return df.loc[mask].copy()
+
+
+def filter_financial_news_published_today(
+    df: pd.DataFrame,
+    on_date: DateLike = None,
+) -> pd.DataFrame:
+    """Rows whose article ``datetime`` is on the given day (default: today, local)."""
+    return filter_financial_news_by_date(df, on_date, date_column="datetime")
 
 
 def filter_financial_news_ingested_today(
@@ -100,6 +117,13 @@ def filter_financial_news_ingested_today(
 ) -> pd.DataFrame:
     """Rows inserted into Postgres on the given day (``created_at`` column)."""
     return filter_financial_news_by_date(df, on_date, date_column="created_at")
+
+
+def _default_target_date(on_date: DateLike) -> date:
+    """Current local calendar day when ``on_date`` is omitted."""
+    if on_date is not None:
+        return _coerce_to_date(on_date)
+    return date.today()
 
 
 def _coerce_to_date(value: DateLike) -> date:

@@ -1,6 +1,6 @@
 """Tests for financial news DataFrame helpers."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 import pandas as pd
 import pytest
@@ -49,6 +49,28 @@ class TestFilterFinancialNewsByDate:
         df = pd.DataFrame({"id": ["1"], "datetime": ["5/23/2026  8:32:15 AM"]})
         normalized = normalize_financial_news_datetime_column(df)
         out = filter_financial_news_by_date(normalized, on_date="2026-05-23")
+        assert len(out) == 1
+
+    def test_startswith_on_space_separated_datetime(self):
+        df = pd.DataFrame(
+            {
+                "id": ["1", "2"],
+                "datetime": ["2026-05-22 16:02:26", "2026-05-23 08:36:29"],
+            }
+        )
+        out = filter_financial_news_by_date(df, on_date="2026-05-22")
+        assert len(out) == 1
+        assert out["id"].iloc[0] == "1"
+
+    def test_default_on_date_is_today(self, monkeypatch):
+        class FixedDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2026, 5, 23)
+
+        monkeypatch.setattr("storage.postgres.news_dataframe.date", FixedDate)
+        df = pd.DataFrame({"datetime": ["2026-05-23T10:00:00.000Z", "2026-05-22T10:00:00.000Z"]})
+        out = filter_financial_news_by_date(df)
         assert len(out) == 1
 
     def test_startswith_behavior_on_iso_strings(self):
