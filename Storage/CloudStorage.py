@@ -12,6 +12,51 @@ from datetime import datetime
 from storage.postgres.news_dataframe import normalize_financial_news_datetime_column
 
 
+def _partition_value_provided(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    return True
+
+
+def _format_partition_component(part_name: str, value) -> str:
+    if part_name == "year":
+        return str(value).strip()
+    text = str(value).strip()
+    if text.isdigit():
+        return f"{int(text):02d}"
+    return text
+
+
+def build_s3_datetime_partition_prefix(
+    prefix: str,
+    *,
+    year=None,
+    month=None,
+    day=None,
+    hour=None,
+    minute=None,
+    second=None,
+) -> str:
+    base = prefix if prefix.endswith("/") else f"{prefix}/"
+    segments = []
+    for part_name, val in (
+        ("year", year),
+        ("month", month),
+        ("day", day),
+        ("hour", hour),
+        ("minute", minute),
+        ("second", second),
+    ):
+        if not _partition_value_provided(val):
+            continue
+        segments.append(f"{part_name}={_format_partition_component(part_name, val)}")
+    if not segments:
+        return base
+    return base + "/".join(segments) + "/"
+
+
 def _load_aws_env() -> None:
     for path in (Path("/app/.env"), Path.cwd() / ".env", Path(__file__).resolve().parents[2] / ".env"):
         if path.is_file():
@@ -94,42 +139,56 @@ class CloudStorageProvider:
                 print("Error:", e)
                 return None
         
-        def get_dataframe_from_specific_datetime(self, bucket_name, prefix, year=None, month=None, day=None, hour=None, minute=None):
+        def _list_csv_keys_under_prefix(self, bucket_name: str, prefix: str) -> list[str]:
+            keys: list[str] = []
+            paginator = self.s3_client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if key.endswith(".csv"):
+                        keys.append(key)
+            return keys
+
+        def get_dataframe_from_specific_datetime(
+            self,
+            bucket_name,
+            prefix,
+            year=None,
+            month=None,
+            day=None,
+            hour=None,
+            minute=None,
+            second=None,
+        ):
             try:
-                # Construct the folder path based on the specified datetime components
-                folder_path = prefix + ""
-                if year is not None:
-                    folder_path += f"year={year}/"
-                if month is not None:
-                    folder_path += f"month={month:02}/"
-                if day is not None:
-                    folder_path += f"day={day:02}/"
-                if hour is not None:
-                    folder_path += f"hour={hour:02}/"
-                if minute is not None:
-                    folder_path += f"minute={minute:02}/"
-                # List objects in the specified folder
-                response = self.s3_client.list_objects_v2(Bucket=bucket_name, Prefix=folder_path)
-                dataframes = []
-                
-                # Retrieve data from each object within the folder
-                for obj in response.get('Contents', []):
-                    key = obj['Key']
-                    
-                    # Check if the object is a CSV file
-                    if key.endswith('.csv'):
-                        # Download CSV file and convert to DataFrame
-                        csv_obj = self.s3_client.get_object(Bucket=bucket_name, Key=key)
-                        dataframe = pd.read_csv(csv_obj['Body'])
-                        dataframes.append(dataframe)
-                
-                # Concatenate all DataFrames into a single DataFrame
-                if dataframes:
-                    result = pd.concat(dataframes, ignore_index=True)
-                    return result
-                else:
-                    print("No data found in the specified datetime.")
+                folder_path = build_s3_datetime_partition_prefix(
+                    prefix,
+                    year=year,
+                    month=month,
+                    day=day,
+                    hour=hour,
+                    minute=minute,
+                    second=second,
+                )
+                print(f"Listing s3://{bucket_name}/{folder_path}")
+
+                keys = self._list_csv_keys_under_prefix(bucket_name, folder_path)
+                print(f"Found {len(keys)} CSV file(s) under prefix")
+
+                if not keys:
+                    print(
+                        "No data found. Expected keys like: "
+                        f"{folder_path}hour=HH/minute=MM/second=SS/format=csv/<id>.csv"
+                    )
                     return None
+
+                dataframes = []
+                for index, key in enumerate(keys, start=1):
+                    print(f"Downloading [{index}/{len(keys)}]: {key}")
+                    csv_obj = self.s3_client.get_object(Bucket=bucket_name, Key=key)
+                    dataframes.append(pd.read_csv(csv_obj["Body"]))
+
+                return pd.concat(dataframes, ignore_index=True)
             except ClientError as e:
                 print("Error:", e)
                 return None
