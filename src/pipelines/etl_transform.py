@@ -154,7 +154,7 @@ _CSV_JSON_COLUMNS = (
 def _prepare_news_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
     """
     Prepare a transformed-news DataFrame for CSV export so each logical row is one physical line.
-    - Formats ``datetime`` as ``YYYY-MM-DD``.
+    - Formats ``datetime`` as ``YYYY-MM-DDTHH:MM:SS.sssZ`` (UTC).
     - Serializes list/dict columns to compact JSON (no newlines).
     - Replaces newlines and carriage returns in string columns with a space.
     This prevents misalignment when opening in Excel or other tools that do not handle quoted newlines.

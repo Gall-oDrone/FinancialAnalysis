@@ -48,20 +48,8 @@ def normalize_datetime_to_iso_z(value: Any) -> Optional[str]:
 
 
 def format_news_datetime_for_export(value: Any) -> Optional[str]:
-    """Format article datetime for S3/CSV/JSONL export as ``YYYY-MM-DD``."""
-    if value is None:
-        return None
-    try:
-        if pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        pass
-    dt = pd.to_datetime(value, errors="coerce")
-    if pd.isna(dt):
-        return None
-    if hasattr(dt, "to_pydatetime"):
-        dt = dt.to_pydatetime()
-    return dt.strftime("%Y-%m-%d")
+    """Format ``datetime`` for S3 CSV/JSONL export (``YYYY-MM-DDTHH:MM:SS.sssZ`` UTC)."""
+    return normalize_datetime_to_iso_z(value)
 
 
 def normalize_financial_news_datetime_column(

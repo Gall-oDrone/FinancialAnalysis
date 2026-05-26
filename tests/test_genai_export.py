@@ -93,7 +93,7 @@ Bitcoin surged past $100,000 today as institutional adoption continues."""
         
         assert 'source' in metadata
         assert 'datetime' in metadata
-        assert metadata['datetime'] == "2026-01-27"
+        assert metadata['datetime'] == "2026-01-27T10:30:00.000Z"
         assert 'sentiment' in metadata
         assert 'tickers' in metadata
     

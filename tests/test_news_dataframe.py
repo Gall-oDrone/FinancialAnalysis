@@ -15,13 +15,11 @@ from storage.postgres.news_dataframe import (
 
 
 class TestFormatNewsDatetimeForExport:
-    def test_formats_timestamp_to_date_only(self):
-        assert format_news_datetime_for_export("2026-05-25 18:00:00") == "2026-05-25"
-        assert format_news_datetime_for_export("2026-05-25T18:00:00.000Z") == "2026-05-25"
+    def test_space_separated_input(self):
+        assert format_news_datetime_for_export("2026-05-25 18:00:00") == "2026-05-25T18:00:00.000Z"
 
-    def test_none_and_na(self):
-        assert format_news_datetime_for_export(None) is None
-        assert format_news_datetime_for_export(pd.NA) is None
+    def test_matches_normalize(self):
+        assert format_news_datetime_for_export("2025-11-25T18:30:00.000Z") == "2025-11-25T18:30:00.000Z"
 
 
 class TestNormalizeDatetimeToIsoZ:
