@@ -36,8 +36,8 @@ docker compose run --rm \
   "${ENV_ARGS[@]}" \
   scraper bash -c "
     cd /app &&
-    pip install jupyter -q &&
-    jupyter notebook \
+    pip install notebook 'openai>=1.0.0' -q &&
+    python -m notebook \
       --ip=0.0.0.0 \
       --port=8888 \
       --no-browser \
