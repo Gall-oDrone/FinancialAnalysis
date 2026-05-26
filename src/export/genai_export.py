@@ -170,6 +170,11 @@ class GenAITextPreparator:
             elif isinstance(value, np.ndarray):
                 value = value.tolist()
 
+            if source_field == "datetime":
+                from storage.postgres.news_dataframe import format_news_datetime_for_export
+
+                value = format_news_datetime_for_export(value)
+
             metadata[export_name] = value
 
         return metadata

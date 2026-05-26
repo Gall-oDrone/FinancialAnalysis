@@ -7,10 +7,21 @@ import pytest
 
 from storage.postgres.news_dataframe import (
     filter_financial_news_by_date,
+    format_news_datetime_for_export,
     get_financial_news_content_by_id,
     normalize_datetime_to_iso_z,
     normalize_financial_news_datetime_column,
 )
+
+
+class TestFormatNewsDatetimeForExport:
+    def test_formats_timestamp_to_date_only(self):
+        assert format_news_datetime_for_export("2026-05-25 18:00:00") == "2026-05-25"
+        assert format_news_datetime_for_export("2026-05-25T18:00:00.000Z") == "2026-05-25"
+
+    def test_none_and_na(self):
+        assert format_news_datetime_for_export(None) is None
+        assert format_news_datetime_for_export(pd.NA) is None
 
 
 class TestNormalizeDatetimeToIsoZ:

@@ -154,11 +154,16 @@ _CSV_JSON_COLUMNS = (
 def _prepare_news_dataframe_for_csv(df: pd.DataFrame) -> pd.DataFrame:
     """
     Prepare a transformed-news DataFrame for CSV export so each logical row is one physical line.
+    - Formats ``datetime`` as ``YYYY-MM-DD``.
     - Serializes list/dict columns to compact JSON (no newlines).
     - Replaces newlines and carriage returns in string columns with a space.
     This prevents misalignment when opening in Excel or other tools that do not handle quoted newlines.
     """
+    from storage.postgres.news_dataframe import format_news_datetime_for_export
+
     out = df.copy()
+    if "datetime" in out.columns:
+        out["datetime"] = out["datetime"].apply(format_news_datetime_for_export)
     for col in out.columns:
         if col in _CSV_JSON_COLUMNS:
             out[col] = out[col].apply(
@@ -349,6 +354,8 @@ def upload_dataframe_to_s3_key(
 ) -> None:
     """Upload a DataFrame as CSV to S3 at the given key."""
     from io import StringIO
+    if content_type == "text/csv" and not df.empty:
+        df = _prepare_news_dataframe_for_csv(df)
     buf = StringIO()
     df.to_csv(buf, index=False)
     s3_client.put_object(

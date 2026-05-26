@@ -47,6 +47,23 @@ def normalize_datetime_to_iso_z(value: Any) -> Optional[str]:
     return f"{dt.strftime('%Y-%m-%dT%H:%M:%S')}.{ms:03d}Z"
 
 
+def format_news_datetime_for_export(value: Any) -> Optional[str]:
+    """Format article datetime for S3/CSV/JSONL export as ``YYYY-MM-DD``."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    dt = pd.to_datetime(value, errors="coerce")
+    if pd.isna(dt):
+        return None
+    if hasattr(dt, "to_pydatetime"):
+        dt = dt.to_pydatetime()
+    return dt.strftime("%Y-%m-%d")
+
+
 def normalize_financial_news_datetime_column(
     df: pd.DataFrame,
     column: str = "datetime",

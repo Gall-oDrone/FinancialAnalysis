@@ -256,6 +256,11 @@ class TestPrepareNewsDataframeForCsv:
         assert " " in out["headline"].iloc[0]
         assert out["content"].iloc[0] == "No newline"
 
+    def test_datetime_column_exported_as_date_only(self):
+        df = pd.DataFrame({"id": ["a"], "datetime": ["2026-05-25 18:00:00"]})
+        out = _prepare_news_dataframe_for_csv(df)
+        assert out["datetime"].iloc[0] == "2026-05-25"
+
     def test_list_dict_columns_serialized_to_json(self):
         df = pd.DataFrame({
             "id": ["a"],
