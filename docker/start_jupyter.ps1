@@ -19,7 +19,7 @@ Write-Host "=========================================="
 Set-Location $RepoRoot
 
 $jupyterCmd = @'
-cd /app && pip install notebook 'openai>=1.0.0' -q && python -m notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.allow_origin='*'
+cd /app && pip install notebook 'openai>=1.0.0' 'future>=0.18.3' -q && python -m notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/app --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.allow_origin='*'
 '@
 
 $composeArgs = @(

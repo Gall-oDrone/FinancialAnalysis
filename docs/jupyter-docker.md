@@ -82,7 +82,7 @@ Postgres can stay up: `docker compose up -d postgres`.
 | Notebook cell edits | Re-run the cell (or **Kernel → Restart** if imports look stale) |
 | `Storage/pgConn.py`, `src/`, other imported `.py` files | **Kernel → Restart**, then re-run cells that import them |
 | `.env` credentials | Restart Jupyter container (`Ctrl+C` → `start_jupyter.ps1`) |
-| `Dockerfile` / `requirements.txt` | `docker compose build scraper` then start Jupyter again |
+| `Dockerfile` / `services/scraper/requirements.txt` | `docker compose build scraper` then start Jupyter again |
 | Postgres data / compose services | `docker compose down` (optional) → `docker compose up -d postgres` |
 
 ## Selenium (ChromeDriver)
