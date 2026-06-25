@@ -56,22 +56,28 @@ def setup_logging(
     # File handler (if log file is specified)
     log_file_path = log_file or log_config.file
     if log_file_path:
-        # Create logs directory if it doesn't exist
-        log_dir = Path(log_file_path).parent
-        log_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            log_dir = Path(log_file_path).parent
+            log_dir.mkdir(parents=True, exist_ok=True)
 
-        file_handler = RotatingFileHandler(
-            log_file_path,
-            maxBytes=log_config.max_bytes,
-            backupCount=log_config.backup_count,
-        )
-        file_handler.setLevel(log_level)
-        file_formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
+            file_handler = RotatingFileHandler(
+                log_file_path,
+                maxBytes=log_config.max_bytes,
+                backupCount=log_config.backup_count,
+            )
+            file_handler.setLevel(log_level)
+            file_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            file_handler.setFormatter(file_formatter)
+            logger.addHandler(file_handler)
+        except OSError as exc:
+            logger.warning(
+                "File logging disabled for %s (%s); using console only.",
+                log_file_path,
+                exc,
+            )
 
     return logger
 

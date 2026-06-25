@@ -19,12 +19,16 @@ fi
 echo "Press Ctrl+C to stop."
 echo "=========================================="
 
+# Container runs as appuser (uid 1000); ensure mounted logs dir is writable
+mkdir -p "${REPO_ROOT}/logs"
+chmod a+rwx "${REPO_ROOT}/logs" 2>/dev/null || true
+
 ENV_ARGS=()
 if [[ -f "${ENV_FILE}" ]]; then
-  ENV_ARGS=(--env-file "${ENV_FILE}" -v "${ENV_FILE}:/app/.env:ro")
+  ENV_ARGS=(--env-from-file "${ENV_FILE}" -v "${ENV_FILE}:/app/.env:ro")
 fi
 
-docker compose run --rm \
+docker-compose run --rm \
   -p 8888:8888 \
   -v "${REPO_ROOT}/WebScraping:/app/WebScraping" \
   -v "${REPO_ROOT}/Storage:/app/Storage" \
@@ -45,5 +49,6 @@ docker compose run --rm \
       --notebook-dir=/app \
       --NotebookApp.token='' \
       --NotebookApp.password='' \
+      --NotebookApp.base_url='/jupyter' \
       --NotebookApp.allow_origin='*'
   "
