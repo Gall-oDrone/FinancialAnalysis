@@ -1,5 +1,5 @@
 # Scroll target for Yahoo Finance topic news stream (JS: document.querySelector("#modular-block-news-stream")).
-MODULAR_BLOCK_NEWS_STREAM_ID = "modular-block-news-stream"
+MODULAR_BLOCK_NEWS_STREAM_ID = "latest-news"
 
 ARTICLE_GRIDLAYOUT_yf_cfn520 = "/html/body/div[2]/main/section/section/section/article"
 SECTION_TOPICHERO_yf_rxsm2g = "/html/body/div[2]/main/section/section/section/article/section[1]"
