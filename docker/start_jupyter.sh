@@ -29,8 +29,6 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 docker-compose run --rm \
-  --shm-size=2g \
-  --security-opt seccomp=unconfined \
   -p 8888:8888 \
   -v "${REPO_ROOT}/config:/app/config:ro" \
   -v "${REPO_ROOT}/WebScraping:/app/WebScraping" \
