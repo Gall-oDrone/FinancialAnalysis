@@ -30,6 +30,7 @@ fi
 
 docker-compose run --rm \
   -p 8888:8888 \
+  -v "${REPO_ROOT}/config:/app/config:ro" \
   -v "${REPO_ROOT}/WebScraping:/app/WebScraping" \
   -v "${REPO_ROOT}/Storage:/app/Storage" \
   -v "${REPO_ROOT}/src:/app/src" \
