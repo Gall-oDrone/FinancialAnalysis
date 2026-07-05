@@ -6,17 +6,20 @@ FROM python:3.11-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    CHROME_BIN=/usr/bin/chromium \
+    CHROME_BIN=/usr/bin/google-chrome-stable \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 postgresql-client \
-    chromium chromium-driver \
+    chromium-driver \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libdbus-1-3 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
     libpango-1.0-0 libcairo2 fonts-liberation wget ca-certificates \
+    && wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && apt-get install -y /tmp/google-chrome.deb \
+    && rm /tmp/google-chrome.deb \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/scraper/requirements.txt /tmp/requirements-scraper.txt
