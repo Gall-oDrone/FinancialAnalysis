@@ -193,8 +193,25 @@ class Scrapper:
             print("=====")
         print("-------------------------------------------------------------------------")
         
+    @staticmethod
+    def is_stale_row_data(row_data):
+        if not row_data or len(row_data) != 7:
+            return True
+        return all(not str(cell).strip() for cell in row_data)
+
+    @staticmethod
+    def extract_row_cells(row):
+        columns = row.find_elements(By.TAG_NAME, "td")
+        return [
+            column.text.strip()
+            for column in columns
+            if column.text.strip() and column.text.strip() != "-"
+        ]
+
     def parse_date(self, date_str):
-        # Convert the month name to a numerical representation using a dictionary
+        if not date_str or not str(date_str).strip():
+            raise ValueError("empty date string")
+
         month_dict = {
             "Jan": "01",
             "Feb": "02",
@@ -210,30 +227,22 @@ class Scrapper:
             "Dec": "12",
         }
 
-        date_str = date_str.replace(",", "")
+        date_str = str(date_str).replace(",", "").strip()
+        parts = date_str.split()
+        if len(parts) != 3:
+            raise ValueError(f"invalid date format: {date_str!r}")
 
-        # Split the date string into month, day, and year
-        month, day, year = date_str.split()
-
-        # Get the numerical representation of the month from the dictionary
+        month, day, year = parts
         month_number = month_dict[month]
-
-        # Create a new date string in the format 'year-month-day' (e.g., '2023-08-01')
         formatted_date_str = f"{year}-{month_number}-{day}"
-
-        # Parse the formatted date string to a datetime object
-        parsed_date = datetime.strptime(formatted_date_str, "%Y-%m-%d")
-
-        return parsed_date
+        return datetime.strptime(formatted_date_str, "%Y-%m-%d")
 
     def parse_row_data(self, row_data):
+        if self.is_stale_row_data(row_data):
+            print("error during parsing data: stale/empty row_data:", row_data)
+            return None
         try:
-            date_format = '%Y-%m-%d'  # Format for parsing date strings
-
-            # Remove commas from numeric values
             row_data = [item.replace(",", "") if isinstance(item, str) else item for item in row_data]
-
-            # Parse elements at specific positions into desired data types
             row_data[0] = self.parse_date(row_data[0])
             row_data[1] = float(row_data[1])
             row_data[2] = float(row_data[2])
@@ -243,7 +252,30 @@ class Scrapper:
             row_data[6] = int(row_data[6])
             return row_data
         except Exception as e:
-            print("error during parsing data:", e, "row_data: ", row_data)        
+            print("error during parsing data:", e, "row_data: ", row_data)
+            return None
+
+    def reload_book_table(self, target_url, max_retries=2):
+        for attempt in range(1, max_retries + 1):
+            print(f"Reloading page (attempt {attempt}/{max_retries})...")
+            try:
+                self.driver.refresh()
+                WebDriverWait(self.driver, 15).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+            except TimeoutException:
+                self.load_url(target_url)
+            time.sleep(2)
+            table, _ = find_element_with_fallbacks_or_save_dom(
+                self.driver,
+                YahooFinanceStockSelectors.get_table_body_selectors(),
+                url=target_url,
+                data_folder="data",
+            )
+            if table is not None:
+                return table
+        print("ERROR: Table still unavailable after reload attempts")
+        return None        
     
     def printInnerHTML(self, xpath):
         # Get the inner HTML of the specific element
@@ -926,34 +958,44 @@ class StocksScrapper(Scrapper):
                             print("Table body not found with any selector")
                         print("====================================================================")
                         continue
-                    # Get all rows of the table
                     rows = table.find_elements(By.TAG_NAME, "tr")
+                    max_row_idx = 7 if time_period == '1d' else len(rows) - 1
+                    max_stale_reloads = 2
+                    stale_reload_attempts = 0
 
-                    # Create an empty list to store the table data
-                    #table_data = []
-                    #df_book = pd.DataFrame(table_data, columns=Header)
-                    # Iterate through each row
                     print("Scraping raw stock prices data task started")
-                    for idx, row in enumerate(rows):
-                        if time_period == '1d' and idx > 7:
+                    idx = 0
+                    while idx < len(rows):
+                        if time_period == '1d' and idx > max_row_idx:
                             break
-                        # Get all columns (cells) of the row
-                        columns = row.find_elements(By.TAG_NAME, "td")
-                        row_data = []
-                        row_data = [column.text for column in columns if column.text != '-']
-                        if(len(row_data) != 7):
-                            print("skipping to next row")
+
+                        row_data = self.extract_row_cells(rows[idx])
+                        parsed_row = self.parse_row_data(row_data)
+
+                        if parsed_row is None:
+                            if stale_reload_attempts < max_stale_reloads:
+                                stale_reload_attempts += 1
+                                print(f"Stale/parse error at row {idx}; reloading before save...")
+                                table = self.reload_book_table(target_url)
+                                if table is None:
+                                    print("Reload failed; stopping scrape for this book.")
+                                    break
+                                rows = table.find_elements(By.TAG_NAME, "tr")
+                                continue
+                            print("skipping row after reload attempts exhausted")
+                            idx += 1
                             continue
-                        row_data = self.parse_row_data(row_data)
-                        row_data.insert(0, book)
-                        row_data.insert(0, REFERENCE)
+
+                        stale_reload_attempts = 0
+                        parsed_row.insert(0, book)
+                        parsed_row.insert(0, REFERENCE)
                         try:
-                            if (show_row_data):
-                                print("test: ", row_data)
-                            self.db_conn.save_to_postgres(row_data, Header)
+                            if show_row_data:
+                                print("test: ", parsed_row)
+                            self.db_conn.save_to_postgres(parsed_row, Header)
                         except Exception as e:
                             print(f"error while saving to postgres: {e}")
-                        #df_book = pd.concat([df_book, pd.DataFrame([row_data], columns=Header)], ignore_index=True)
+                        idx += 1
                     #df = pd.concat([df, df_book], ignore_index=True)
                     #num_rows, num_columns = df.shape
                     #last_five_rows = df.tail(3)
@@ -974,8 +1016,9 @@ class StocksScrapper(Scrapper):
             print("-----")
             print(toe.args)
         finally:
-            if(self.debugDB):
+            if self.debugDB:
                 self.db_conn.delete_table("historical")
-            self.db_conn.close_connection()
+            if self.db_conn is not None:
+                self.db_conn.close_connection()
         if (self.keepBrowserOpen == False):
             self.driver.close()

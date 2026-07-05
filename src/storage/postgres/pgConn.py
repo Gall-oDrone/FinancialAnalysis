@@ -392,6 +392,7 @@ class PgConn:
     def close_connection(self):
         if self.connection:
             self.connection.close()
+            self.connection = None
             print("Connection closed.")
 
 # Example usage:
