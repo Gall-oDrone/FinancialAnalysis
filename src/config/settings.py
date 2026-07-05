@@ -41,7 +41,9 @@ class AWSConfig:
         self.region: str = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
         self.default_bucket: Optional[str] = os.getenv("AWS_DEFAULT_BUCKET")
         self.news_bucket: Optional[str] = os.getenv("AWS_NEWS_BUCKET")
-        self.stocks_bucket: Optional[str] = os.getenv("AWS_STOCKS_BUCKET")
+        self.stocks_bucket: Optional[str] = (
+            os.getenv("AWS_DEFAULT_STOCKS_BUCKET") or os.getenv("AWS_STOCKS_BUCKET")
+        )
 
     def __repr__(self) -> str:
         return f"AWSConfig(region={self.region}, bucket={self.default_bucket})"

@@ -598,9 +598,11 @@ def run_stocks_etl(
     from transform.stocks.stock_transformers import StockTransformationPipeline
 
     settings = get_settings()
-    bucket = stocks_bucket or getattr(settings.aws, "stocks_bucket", None) or settings.aws.default_bucket
+    bucket = stocks_bucket or getattr(settings.aws, "stocks_bucket", None)
     if not bucket and (upload_s3 or upload_s3_batch):
-        logger.warning("No stocks S3 bucket configured; skipping S3 upload")
+        logger.warning(
+            "No stocks S3 bucket configured (set AWS_DEFAULT_STOCKS_BUCKET in .env); skipping S3 upload"
+        )
 
     since_dt = pd.to_datetime(since)
     until_dt = pd.to_datetime(until) if until else since_dt
