@@ -319,18 +319,35 @@ deploy_cloudfront_stack() {
 retrieve_password() {
   local secret_name="${STACK_NAME}-password"
   log_info "Retrieving IDE password from Secrets Manager..."
-  local password
-  if password=$(aws secretsmanager get-secret-value --secret-id "$secret_name" --region "$AWS_REGION" --query 'SecretString' --output text 2>/dev/null); then
-    password=$(echo "$password" | jq -r '.password' 2>/dev/null || echo "$password")
-    if [ -n "$password" ] && [ "$password" != "null" ]; then
-      log_success "Password retrieved!"
-      echo ""; echo "=========================================="
-      echo -e "${GREEN}IDE Password:${NC} $password"
-      echo "=========================================="; echo ""
-      return 0
-    fi
+  local secret_json password
+  if ! secret_json=$(aws secretsmanager get-secret-value --secret-id "$secret_name" --region "$AWS_REGION" --query 'SecretString' --output text 2>/dev/null); then
+    log_warning "Retrieve password manually: aws secretsmanager get-secret-value --secret-id $secret_name --region $AWS_REGION --query SecretString --output text"
+    return 1
   fi
-  log_warning "Retrieve password manually: aws secretsmanager get-secret-value --secret-id $secret_name --region $AWS_REGION --query SecretString --output text | jq -r .password"
+
+  # Prefer jq; fall back to python. Never echo the raw JSON as the password.
+  if command -v jq &>/dev/null; then
+    password=$(printf '%s' "$secret_json" | jq -r '.password')
+  elif command -v python &>/dev/null || command -v python3 &>/dev/null; then
+    local py
+    command -v python &>/dev/null && py=python || py=python3
+    password=$("$py" -c 'import json,sys; print(json.loads(sys.argv[1])["password"])' "$secret_json")
+  else
+    log_warning "Neither jq nor python found; cannot parse password safely."
+    log_warning "Secret JSON keys present; install jq/python or parse .password manually."
+    return 1
+  fi
+
+  if [ -n "$password" ] && [ "$password" != "null" ]; then
+    log_success "Password retrieved!"
+    echo ""; echo "=========================================="
+    echo -e "${GREEN}IDE Password:${NC} $password"
+    echo "=========================================="; echo ""
+    printf '%s' "$password" > "${SCRIPT_DIR}/ide-password.txt"
+    chmod 600 "${SCRIPT_DIR}/ide-password.txt" 2>/dev/null || true
+    return 0
+  fi
+  log_warning "Password field missing/empty in secret $secret_name"
   return 1
 }
 

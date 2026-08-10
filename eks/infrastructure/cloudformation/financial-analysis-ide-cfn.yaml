@@ -226,7 +226,7 @@ Resources:
     DependsOn: FinancialAnalysisIdePassword
     Properties:
       ImageId: !Ref AmiParameterStoreName
-      InstanceType: t3.medium
+      InstanceType: m5.large
       IamInstanceProfile: !Ref InstanceProfileName
       SubnetId: !Ref PublicSubnet
       SecurityGroupIds:

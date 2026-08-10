@@ -114,3 +114,11 @@ unavailable_books.csv
 *.key
 !*.pub
 venv_test/
+
+# IDE CloudFormation local secrets / deploy artifacts
+eks/infrastructure/cloudformation/scripts/ide-password.txt
+eks/infrastructure/cloudformation/scripts/check-password-match.txt
+eks/infrastructure/cloudformation/scripts/check-ide-config.*
+eks/infrastructure/cloudformation/scripts/deploy-cfn-run.out
+eks/infrastructure/cloudformation/scripts/code-server-config.yaml
+eks/infrastructure/cloudformation/scripts/logs/
