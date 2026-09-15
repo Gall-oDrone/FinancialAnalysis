@@ -9,8 +9,8 @@ ENV_FILE="${REPO_ROOT}/.env"
 echo "Starting Jupyter Notebook server..."
 echo "=========================================="
 echo "Repo: ${REPO_ROOT}"
-echo "Jupyter: http://localhost:8888/tree"
-echo "Notebook: http://localhost:8888/notebooks/notebooks/ingestion/DataIngestion-Text.ipynb"
+echo "Jupyter: http://localhost:8888/jupyter/tree"
+echo "Notebook: http://localhost:8888/jupyter/notebooks/notebooks/ingestion/DataIngestion-Text.ipynb"
 if [[ -f "${ENV_FILE}" ]]; then
   echo "Env file: ${ENV_FILE}"
 else
@@ -39,17 +39,24 @@ docker-compose run --rm \
   -v "${REPO_ROOT}/data:/app/data" \
   -e PYTHONPATH=/app/src:/app/Storage:/app \
   "${ENV_ARGS[@]}" \
-  scraper bash -c "
+  scraper bash -c '
     cd /app &&
-    pip install notebook 'openai>=1.0.0' 'future>=0.18.3' -q &&
+    # Pin tornado<6.5: Notebook 7.x FileFindHandler crashes on tornado 6.5+
+    # (AttributeError: allowed_symlink_directory) → white screen / 500 on static JS.
+    # ServerApp.base_url=/jupyter matches CloudFront path (IDE CFN).
+    pip install --user notebook "openai>=1.0.0" "future>=0.18.3" "tornado<6.5" -q &&
+    export PATH="$HOME/.local/bin:$PATH" &&
     python -m notebook \
       --ip=0.0.0.0 \
       --port=8888 \
       --no-browser \
       --allow-root \
       --notebook-dir=/app \
-      --NotebookApp.token='' \
-      --NotebookApp.password='' \
-      --NotebookApp.base_url='/jupyter' \
-      --NotebookApp.allow_origin='*'
-  "
+      --ServerApp.token="" \
+      --ServerApp.password="" \
+      --ServerApp.base_url="/jupyter/" \
+      --ServerApp.allow_origin="*" \
+      --ServerApp.allow_remote_access=True \
+      --ServerApp.trust_xheaders=True \
+      --ServerApp.disable_check_xsrf=True
+  '
